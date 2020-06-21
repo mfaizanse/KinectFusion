@@ -11,8 +11,6 @@
 
 #define USE_POINT_TO_PLANE	1
 #define USE_LINEAR_ICP		1
-
-#define RUN_SHAPE_ICP		0
 #define RUN_SEQUENCE_ICP	1
 
 void debugCorrespondenceMatching() {
@@ -58,67 +56,8 @@ void debugCorrespondenceMatching() {
 	resultingMesh.writeMesh(std::string("../output/correspondences.off"));
 }
 
-int alignBunnyWithICP() {
-	// Load the source and target mesh.
-	const std::string filenameSource = std::string("../data/bunny/bunny_part2_trans.off");
-	const std::string filenameTarget = std::string("../data/bunny/bunny_part1.off");
-
-	SimpleMesh sourceMesh;
-	if (!sourceMesh.loadMesh(filenameSource)) {
-		std::cout << "Mesh file wasn't read successfully at location: " << filenameSource << std::endl;
-		return -1;
-	}
-
-	SimpleMesh targetMesh;
-	if (!targetMesh.loadMesh(filenameTarget)) {
-		std::cout << "Mesh file wasn't read successfully at location: " << filenameTarget << std::endl;
-		return -1;
-	}
-
-	// Estimate the pose from source to target mesh with ICP optimization.
-	ICPOptimizer* optimizer = nullptr;
-	if (USE_LINEAR_ICP) {
-		optimizer = new LinearICPOptimizer();
-	}
-	else {
-		optimizer = new CeresICPOptimizer();
-	}
-	
-	optimizer->setMatchingMaxDistance(0.0003f);
-	if (USE_POINT_TO_PLANE) {
-		optimizer->usePointToPlaneConstraints(true);
-		optimizer->setNbOfIterations(20);
-	}
-	else {
-		optimizer->usePointToPlaneConstraints(false);
-		optimizer->setNbOfIterations(20);
-	}
-
-	PointCloud source{ sourceMesh };
-	PointCloud target{ targetMesh };
-
-	Matrix4f estimatedPose = optimizer->estimatePose(source, target);
-	
-	// Visualize the resulting joined mesh. We add triangulated spheres for point matches.
-	SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, estimatedPose);
-	if (SHOW_BUNNY_CORRESPONDENCES) {
-		for (const auto& sourcePoint : source.getPoints()) {
-			resultingMesh = SimpleMesh::joinMeshes(SimpleMesh::sphere(sourcePoint, 0.001f), resultingMesh, estimatedPose);
-		}
-		for (const auto& targetPoint : target.getPoints()) {
-			resultingMesh = SimpleMesh::joinMeshes(SimpleMesh::sphere(targetPoint, 0.001f, Vector4uc(255, 255, 255, 255)), resultingMesh, Matrix4f::Identity());
-		}
-	}
-	resultingMesh.writeMesh(std::string("../output/bunny_icp.off"));
-	std::cout << "Resulting mesh written." << std::endl;
-
-	delete optimizer;
-
-	return 0;
-}
-
 int reconstructRoom() {
-	std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
+	std::string filenameIn = std::string("../data/rgbd_dataset_freiburg1_xyz/");
 	std::string filenameBaseOut = std::string("../output/mesh_");
 
 	// Load video
@@ -143,14 +82,8 @@ int reconstructRoom() {
 	}
 
 	optimizer->setMatchingMaxDistance(0.1f);
-	if (USE_POINT_TO_PLANE) {
-		optimizer->usePointToPlaneConstraints(true);
-		optimizer->setNbOfIterations(10);
-	}
-	else {
-		optimizer->usePointToPlaneConstraints(false);
-		optimizer->setNbOfIterations(20);
-	}
+    optimizer->usePointToPlaneConstraints(true);
+    optimizer->setNbOfIterations(10);
 
 	// We store the estimated camera poses.
 	std::vector<Matrix4f> estimatedPoses;
@@ -197,11 +130,6 @@ int reconstructRoom() {
 }
 
 int main() {
-	int result = 0;
-	if (RUN_SHAPE_ICP)
-		result += alignBunnyWithICP();
-	if (RUN_SEQUENCE_ICP)
-		result += reconstructRoom();
-
+    int result = reconstructRoom();
 	return result;
 }

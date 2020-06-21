@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6"/>
+	<Project>
+		<Option title="kinect_fusion"/>
+		<Option makefile_is_custom="1"/>
+		<Option compiler="gcc"/>
+		<Option virtualFolders="CMake Files\;CMake Files\..\;CMake Files\..\..\;CMake Files\..\..\..\;CMake Files\..\..\..\..\;CMake Files\..\..\..\..\..\;CMake Files\..\..\..\..\..\usr\;CMake Files\..\..\..\..\..\usr\local\;CMake Files\..\..\..\..\..\usr\local\lib\;CMake Files\..\..\..\..\..\usr\local\lib\cmake\;CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\;CMake Files\..\..\..\..\..\usr\local\lib\cmake\gflags\;CMake Files\..\..\..\..\..\usr\local\lib\cmake\glog\;CMake Files\..\..\..\..\..\usr\local\share\;CMake Files\..\..\..\..\..\usr\local\share\eigen3\;CMake Files\..\..\..\..\..\usr\local\share\eigen3\cmake\;"/>
+		<Build>
+			<Target title="all">
+				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 all"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="rebuild_cache">
+				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 rebuild_cache"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="edit_cache">
+				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
+				<Option type="4"/>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 edit_cache"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="exercise_05">
+				<Option output="/Users/faizi/git/KinectFusion/src/cmake-build-debug/exercise_05" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add option="-D_DISABLE_EXTENDED_ALIGNED_STORAGE"/>
+					<Add option="-DGFLAGS_IS_A_DLL=0"/>
+					<Add option="-DGOOGLE_GLOG_DLL_DECL="/>
+					<Add option="-DGOOGLE_GLOG_DLL_DECL_FOR_UNITTESTS="/>
+					<Add directory="/usr/local/include/eigen3"/>
+					<Add directory="/Users/faizi/git/KinectFusion/src"/>
+					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/Ceres/CMake/../include"/>
+					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/glog-lib/include"/>
+					<Add directory="/usr/local/Cellar/freeimage/3.18.0/include"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/lib/clang/11.0.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 exercise_05"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+			<Target title="exercise_05/fast">
+				<Option output="/Users/faizi/git/KinectFusion/src/cmake-build-debug/exercise_05" prefix_auto="0" extension_auto="0"/>
+				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
+				<Option object_output="./"/>
+				<Option type="1"/>
+				<Option compiler="gcc"/>
+				<Compiler>
+					<Add option="-D_DISABLE_EXTENDED_ALIGNED_STORAGE"/>
+					<Add option="-DGFLAGS_IS_A_DLL=0"/>
+					<Add option="-DGOOGLE_GLOG_DLL_DECL="/>
+					<Add option="-DGOOGLE_GLOG_DLL_DECL_FOR_UNITTESTS="/>
+					<Add directory="/usr/local/include/eigen3"/>
+					<Add directory="/Users/faizi/git/KinectFusion/src"/>
+					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/Ceres/CMake/../include"/>
+					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/glog-lib/include"/>
+					<Add directory="/usr/local/Cellar/freeimage/3.18.0/include"/>
+					<Add directory="/usr/local/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/bin/../include/c++/v1"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/lib/clang/11.0.0/include"/>
+					<Add directory="/Library/Developer/CommandLineTools/usr/include"/>
+					<Add directory="/System/Library/Frameworks"/>
+					<Add directory="/Library/Frameworks"/>
+				</Compiler>
+				<MakeCommands>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 exercise_05/fast"/>
+					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
+					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
+				</MakeCommands>
+			</Target>
+		</Build>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/Eigen.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/FreeImageHelper.cpp">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/FreeImageHelper.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/ICPOptimizer.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/NearestNeighbor.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/PointCloud.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/ProcrustesAligner.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/SimpleMesh.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/VirtualSensor.h">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/main.cpp">
+			<Option target="exercise_05"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/CMakeLists.txt">
+			<Option virtualFolder="CMake Files\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/CeresConfig.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/CeresConfigVersion.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/CeresTargets-release.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/CeresTargets.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/FindEigen.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/FindGflags.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/Ceres/FindGlog.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\Ceres\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/gflags/gflags-config-version.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\gflags\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/gflags/gflags-config.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\gflags\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/gflags/gflags-nonamespace-targets-release.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\gflags\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/gflags/gflags-nonamespace-targets.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\gflags\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/glog/glog-config-version.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\glog\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/glog/glog-config.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\glog\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/glog/glog-targets-release.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\glog\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/lib/cmake/glog/glog-targets.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\lib\cmake\glog\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/share/eigen3/cmake/Eigen3Config.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\share\eigen3\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/share/eigen3/cmake/Eigen3ConfigVersion.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\share\eigen3\cmake\"/>
+		</Unit>
+		<Unit filename="/Users/faizi/git/KinectFusion/src/../../../../../usr/local/share/eigen3/cmake/Eigen3Targets.cmake">
+			<Option virtualFolder="CMake Files\..\..\..\..\..\usr\local\share\eigen3\cmake\"/>
+		</Unit>
+	</Project>
+</CodeBlocks_project_file>

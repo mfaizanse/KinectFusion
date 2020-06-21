@@ -1,0 +1,3 @@
+/Users/faizi/git/KinectFusion/src/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/Users/faizi/git/KinectFusion/src/cmake-build-debug/CMakeFiles/edit_cache.dir
+/Users/faizi/git/KinectFusion/src/cmake-build-debug/CMakeFiles/exercise_05.dir
