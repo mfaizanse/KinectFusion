@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE)
 
 set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-8")
-set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -ccbin /usr/bin/gcc-8")
 
 project(kinect_fusion CUDA CXX)
 
