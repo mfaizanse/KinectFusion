@@ -1,8 +1,13 @@
-cmake_minimum_required(VERSION 3.6)
+cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE)
 
-project(kinect_fusion)
+set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-8")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -ccbin /usr/bin/gcc-8")
+
+project(kinect_fusion CUDA CXX)
+
+set(CMAKE_CUDA_STANDARD 14)
 
 # Options
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../libs CACHE PATH "Path to lib folder")
@@ -63,10 +68,16 @@ set(SOURCE_FILES
 link_directories(${FreeImage_LIBRARY_DIR})
 link_directories(${Lz4_LIBRARY_DIR})
 link_directories(${Flann_LIBRARY_DIR})
-add_executable(exercise_05 main.cpp ${HEADER_FILES} ${SOURCE_FILES})
-target_link_libraries(exercise_05 ceres glog::glog freeimage)
-target_link_libraries(exercise_05 flann flann_cpp lz4)
-target_include_directories(exercise_05 PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}  ${Ceres_INCLUDE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
+add_executable(kinect_fusion main.cpp ${HEADER_FILES} ${SOURCE_FILES})
+target_link_libraries (kinect_fusion Eigen3::Eigen)
+target_link_libraries(kinect_fusion ceres glog::glog freeimage)
+target_link_libraries(kinect_fusion flann flann_cpp lz4)
+target_include_directories(kinect_fusion PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}  ${Ceres_INCLUDE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
+
+set_target_properties(
+        kinect_fusion
+        PROPERTIES
+        CUDA_SEPARABLE_COMPILATION ON)
 
 # # Visual Studio properties
 # set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT exercise_05)
