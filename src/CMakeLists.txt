@@ -59,7 +59,7 @@ set(HEADER_FILES
     ProcrustesAligner.h 
     ICPOptimizer.h 
     FreeImageHelper.h
-)
+        CudaMesh.h CudaError.h Macros.h)
 set(SOURCE_FILES 
     FreeImageHelper.cpp
 )
