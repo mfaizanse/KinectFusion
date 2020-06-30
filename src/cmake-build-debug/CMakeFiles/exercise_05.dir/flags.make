@@ -6,5 +6,5 @@ CXX_FLAGS = -g -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/Ma
 
 CXX_DEFINES = -DGFLAGS_IS_A_DLL=0 -DGOOGLE_GLOG_DLL_DECL="" -DGOOGLE_GLOG_DLL_DECL_FOR_UNITTESTS="" -D_DISABLE_EXTENDED_ALIGNED_STORAGE
 
-CXX_INCLUDES = -I/usr/local/include/eigen3 -I/Users/faizi/git/KinectFusion/src -I/Users/faizi/git/KinectFusion/src/../libs/Ceres/CMake/../include -I/Users/faizi/git/KinectFusion/src/../libs/glog-lib/include -I/usr/local/Cellar/freeimage/3.18.0/include -isystem /usr/local/include 
+CXX_INCLUDES = -I/usr/local/include/eigen3 -I/Users/faizi/git/KinectFusion/src -I/usr/local/lib/cmake/Ceres/../include -I/Users/faizi/git/KinectFusion/src/../libs/glog-lib/include -I/usr/local/Cellar/freeimage/3.18.0/include -isystem /usr/local/include 
 

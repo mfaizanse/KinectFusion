@@ -37,8 +37,8 @@
 					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
-			<Target title="exercise_05">
-				<Option output="/Users/faizi/git/KinectFusion/src/cmake-build-debug/exercise_05" prefix_auto="0" extension_auto="0"/>
+			<Target title="kinect_fusion">
+				<Option output="/Users/faizi/git/KinectFusion/src/cmake-build-debug/kinect_fusion" prefix_auto="0" extension_auto="0"/>
 				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
@@ -50,7 +50,7 @@
 					<Add option="-DGOOGLE_GLOG_DLL_DECL_FOR_UNITTESTS="/>
 					<Add directory="/usr/local/include/eigen3"/>
 					<Add directory="/Users/faizi/git/KinectFusion/src"/>
-					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/Ceres/CMake/../include"/>
+					<Add directory="/usr/local/lib/cmake/Ceres/../include"/>
 					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/glog-lib/include"/>
 					<Add directory="/usr/local/Cellar/freeimage/3.18.0/include"/>
 					<Add directory="/usr/local/include"/>
@@ -61,14 +61,14 @@
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 exercise_05"/>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 kinect_fusion"/>
 					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
 					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 				</MakeCommands>
 			</Target>
-			<Target title="exercise_05/fast">
-				<Option output="/Users/faizi/git/KinectFusion/src/cmake-build-debug/exercise_05" prefix_auto="0" extension_auto="0"/>
+			<Target title="kinect_fusion/fast">
+				<Option output="/Users/faizi/git/KinectFusion/src/cmake-build-debug/kinect_fusion" prefix_auto="0" extension_auto="0"/>
 				<Option working_dir="/Users/faizi/git/KinectFusion/src/cmake-build-debug"/>
 				<Option object_output="./"/>
 				<Option type="1"/>
@@ -80,7 +80,7 @@
 					<Add option="-DGOOGLE_GLOG_DLL_DECL_FOR_UNITTESTS="/>
 					<Add directory="/usr/local/include/eigen3"/>
 					<Add directory="/Users/faizi/git/KinectFusion/src"/>
-					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/Ceres/CMake/../include"/>
+					<Add directory="/usr/local/lib/cmake/Ceres/../include"/>
 					<Add directory="/Users/faizi/git/KinectFusion/src/../libs/glog-lib/include"/>
 					<Add directory="/usr/local/Cellar/freeimage/3.18.0/include"/>
 					<Add directory="/usr/local/include"/>
@@ -91,7 +91,7 @@
 					<Add directory="/Library/Frameworks"/>
 				</Compiler>
 				<MakeCommands>
-					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 exercise_05/fast"/>
+					<Build command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 kinect_fusion/fast"/>
 					<CompileFile command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 &quot;$file&quot;"/>
 					<Clean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
 					<DistClean command="/usr/bin/make -j8 -f &quot;/Users/faizi/git/KinectFusion/src/cmake-build-debug/Makefile&quot;  VERBOSE=1 clean"/>
@@ -99,34 +99,34 @@
 			</Target>
 		</Build>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/Eigen.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/FreeImageHelper.cpp">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/FreeImageHelper.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/ICPOptimizer.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/NearestNeighbor.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/PointCloud.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/ProcrustesAligner.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/SimpleMesh.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/VirtualSensor.h">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/main.cpp">
-			<Option target="exercise_05"/>
+			<Option target="kinect_fusion"/>
 		</Unit>
 		<Unit filename="/Users/faizi/git/KinectFusion/src/CMakeLists.txt">
 			<Option virtualFolder="CMake Files\"/>

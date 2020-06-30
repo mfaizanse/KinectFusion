@@ -111,17 +111,17 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named exercise_05
+# Target rules for targets named kinect_fusion
 
 # Build rule for target.
-exercise_05: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 exercise_05
-.PHONY : exercise_05
+kinect_fusion: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 kinect_fusion
+.PHONY : kinect_fusion
 
 # fast build rule for target.
-exercise_05/fast:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/build
-.PHONY : exercise_05/fast
+kinect_fusion/fast:
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/build
+.PHONY : kinect_fusion/fast
 
 FreeImageHelper.o: FreeImageHelper.cpp.o
 
@@ -129,7 +129,7 @@ FreeImageHelper.o: FreeImageHelper.cpp.o
 
 # target to build an object file
 FreeImageHelper.cpp.o:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/FreeImageHelper.cpp.o
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/FreeImageHelper.cpp.o
 .PHONY : FreeImageHelper.cpp.o
 
 FreeImageHelper.i: FreeImageHelper.cpp.i
@@ -138,7 +138,7 @@ FreeImageHelper.i: FreeImageHelper.cpp.i
 
 # target to preprocess a source file
 FreeImageHelper.cpp.i:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/FreeImageHelper.cpp.i
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/FreeImageHelper.cpp.i
 .PHONY : FreeImageHelper.cpp.i
 
 FreeImageHelper.s: FreeImageHelper.cpp.s
@@ -147,7 +147,7 @@ FreeImageHelper.s: FreeImageHelper.cpp.s
 
 # target to generate assembly for a file
 FreeImageHelper.cpp.s:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/FreeImageHelper.cpp.s
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/FreeImageHelper.cpp.s
 .PHONY : FreeImageHelper.cpp.s
 
 main.o: main.cpp.o
@@ -156,7 +156,7 @@ main.o: main.cpp.o
 
 # target to build an object file
 main.cpp.o:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/main.cpp.o
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/main.cpp.o
 .PHONY : main.cpp.o
 
 main.i: main.cpp.i
@@ -165,7 +165,7 @@ main.i: main.cpp.i
 
 # target to preprocess a source file
 main.cpp.i:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/main.cpp.i
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/main.cpp.i
 .PHONY : main.cpp.i
 
 main.s: main.cpp.s
@@ -174,7 +174,7 @@ main.s: main.cpp.s
 
 # target to generate assembly for a file
 main.cpp.s:
-	$(MAKE) -f CMakeFiles/exercise_05.dir/build.make CMakeFiles/exercise_05.dir/main.cpp.s
+	$(MAKE) -f CMakeFiles/kinect_fusion.dir/build.make CMakeFiles/kinect_fusion.dir/main.cpp.s
 .PHONY : main.cpp.s
 
 # Help Target
@@ -185,7 +185,7 @@ help:
 	@echo "... depend"
 	@echo "... rebuild_cache"
 	@echo "... edit_cache"
-	@echo "... exercise_05"
+	@echo "... kinect_fusion"
 	@echo "... FreeImageHelper.o"
 	@echo "... FreeImageHelper.i"
 	@echo "... FreeImageHelper.s"

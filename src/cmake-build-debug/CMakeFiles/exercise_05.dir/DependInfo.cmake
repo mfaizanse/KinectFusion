@@ -21,7 +21,7 @@ set(CMAKE_TARGET_DEFINITIONS_CXX
 set(CMAKE_CXX_TARGET_INCLUDE_PATH
   "/usr/local/include/eigen3"
   "../"
-  "../../libs/Ceres/CMake/../include"
+  "/usr/local/lib/cmake/Ceres/../include"
   "../../libs/glog-lib/include"
   "/usr/local/Cellar/freeimage/3.18.0/include"
   "/usr/local/include"

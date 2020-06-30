@@ -63,19 +63,19 @@ set(SOURCE_FILES
 link_directories(${FreeImage_LIBRARY_DIR})
 link_directories(${Lz4_LIBRARY_DIR})
 link_directories(${Flann_LIBRARY_DIR})
-add_executable(exercise_05 main.cpp ${HEADER_FILES} ${SOURCE_FILES})
-target_link_libraries(exercise_05 ceres glog::glog freeimage)
-target_link_libraries(exercise_05 flann flann_cpp lz4)
-target_include_directories(exercise_05 PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}  ${Ceres_INCLUDE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
+add_executable(kinect_fusion main.cpp ${HEADER_FILES} ${SOURCE_FILES})
+target_link_libraries(kinect_fusion ceres glog::glog freeimage)
+target_link_libraries(kinect_fusion flann flann_cpp lz4)
+target_include_directories(kinect_fusion PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}  ${Ceres_INCLUDE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
 
 # # Visual Studio properties
-# set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT exercise_05)
-# set_property(TARGET exercise_05 PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/)
+# set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT kinect_fusion)
+# set_property(TARGET kinect_fusion PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/)
 
 # On Windows copy dll to executable folder
 if(WIN32)
-    add_custom_command(TARGET exercise_05 POST_BUILD        # Adds a post-build event to MyTest
+    add_custom_command(TARGET kinect_fusion POST_BUILD        # Adds a post-build event to MyTest
         COMMAND ${CMAKE_COMMAND} -E copy_if_different  # which executes "cmake - E copy_if_different..."
             "${LIBRARY_DIR}/FreeImage/x64/FreeImage.dll"      # <--this is in-file
-            $<TARGET_FILE_DIR:exercise_05>)                 # <--this is out-file path
+            $<TARGET_FILE_DIR:kinect_fusion>)                 # <--this is out-file path
 endif(WIN32)
