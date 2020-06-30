@@ -6,7 +6,7 @@ project(kinect_fusion)
 
 # Options
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../libs CACHE PATH "Path to lib folder")
-set(Eigen3_INCLUDE_DIR /usr/local/include/eigen3/ CACHE PATH "Path to Eigen source folder")
+set(Eigen3_INCLUDE_DIR /usr/include/eigen3/ CACHE PATH "Path to Eigen source folder")
 set(glog_INCLUDE_DIR ${LIBRARY_DIR}/glog-lib/include CACHE PATH "Path to glog source folder")
 set(Ceres_DIR ${LIBRARY_DIR}/Ceres/CMake CACHE PATH "Path to Ceres build folder")
 set(Ceres_INCLUDE_DIR ${Ceres_DIR}/../include)

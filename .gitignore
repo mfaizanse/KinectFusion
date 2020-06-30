@@ -36,3 +36,5 @@
 outputs/
 data/
 src/cmake-build-debug
+libs/
+lib/
