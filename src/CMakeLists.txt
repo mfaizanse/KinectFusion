@@ -59,7 +59,9 @@ set(HEADER_FILES
     ProcrustesAligner.h 
     ICPOptimizer.h 
     FreeImageHelper.h
-        CudaMesh.h CudaError.h Macros.h SurfaceMeasurement.h)
+    CudaError.h
+    Macros.h
+    SurfaceMeasurement.h)
 set(SOURCE_FILES 
     FreeImageHelper.cpp
 )
