@@ -6,32 +6,32 @@ class PointCloud {
 public:
 	PointCloud() {}
 
-	PointCloud(const SimpleMesh& mesh) {
-		const auto& vertices = mesh.getVertices();
-		const auto& triangles = mesh.getTriangles();
-		const unsigned nVertices = vertices.size();
-		const unsigned nTriangles = triangles.size();
-
-		// Copy vertices.
-		m_points.reserve(nVertices);
-		for (const auto& vertex : vertices) {
-			m_points.push_back(Vector3f{ vertex.position.x(), vertex.position.y(), vertex.position.z() });
-		}
-
-		// Compute normals (as an average of triangle normals).
-		m_normals = std::vector<Vector3f>(nVertices, Vector3f::Zero());
-		for (size_t i = 0; i < nTriangles; i++) {
-			const auto& triangle = triangles[i];
-			Vector3f faceNormal = (m_points[triangle.idx1] - m_points[triangle.idx0]).cross(m_points[triangle.idx2] - m_points[triangle.idx0]);
-
-			m_normals[triangle.idx0] += faceNormal;
-			m_normals[triangle.idx1] += faceNormal;
-			m_normals[triangle.idx2] += faceNormal;
-		}
-		for (size_t i = 0; i < nVertices; i++) {
-			m_normals[i].normalize();
-		}
-	}
+//	PointCloud(const SimpleMesh& mesh) {
+//		const auto& vertices = mesh.getVertices();
+//		const auto& triangles = mesh.getTriangles();
+//		const unsigned nVertices = vertices.size();
+//		const unsigned nTriangles = triangles.size();
+//
+//		// Copy vertices.
+//		m_points.reserve(nVertices);
+//		for (const auto& vertex : vertices) {
+//			m_points.push_back(Vector3f{ vertex.position.x(), vertex.position.y(), vertex.position.z() });
+//		}
+//
+//		// Compute normals (as an average of triangle normals).
+//		m_normals = std::vector<Vector3f>(nVertices, Vector3f::Zero());
+//		for (size_t i = 0; i < nTriangles; i++) {
+//			const auto& triangle = triangles[i];
+//			Vector3f faceNormal = (m_points[triangle.idx1] - m_points[triangle.idx0]).cross(m_points[triangle.idx2] - m_points[triangle.idx0]);
+//
+//			m_normals[triangle.idx0] += faceNormal;
+//			m_normals[triangle.idx1] += faceNormal;
+//			m_normals[triangle.idx2] += faceNormal;
+//		}
+//		for (size_t i = 0; i < nVertices; i++) {
+//			m_normals[i].normalize();
+//		}
+//	}
 
 	PointCloud(float* depthMap, const Matrix3f& depthIntrinsics, const Matrix4f& depthExtrinsics, const unsigned width, const unsigned height, unsigned downsampleFactor = 1, float maxDistance = 0.1f) {
 		// Get depth intrinsics.
@@ -116,67 +116,67 @@ public:
 		}
 	}
 
-	bool readFromFile(const std::string& filename) {
-		std::ifstream is(filename, std::ios::in | std::ios::binary);
-		if (!is.is_open()) {
-			std::cout << "ERROR: unable to read input file!" << std::endl;
-			return false;
-		}
-
-		char nBytes;
-		is.read(&nBytes, sizeof(char));
-
-		unsigned int n;
-		is.read((char*)&n, sizeof(unsigned int));
-
-		if (nBytes == sizeof(float)) {
-			float* ps = new float[3 * n];
-
-			is.read((char*)ps, 3 * sizeof(float) * n);
-
-			for (unsigned int i = 0; i < n; i++) {
-				Eigen::Vector3f p(ps[3 * i + 0], ps[3 * i + 1], ps[3 * i + 2]);
-				m_points.push_back(p);
-			}
-
-			is.read((char*)ps, 3 * sizeof(float) * n);
-			for (unsigned int i = 0; i < n; i++) {
-				Eigen::Vector3f p(ps[3 * i + 0], ps[3 * i + 1], ps[3 * i + 2]);
-				m_normals.push_back(p);
-			}
-
-			delete ps;
-		}
-		else {
-			double* ps = new double[3 * n];
-
-			is.read((char*)ps, 3 * sizeof(double) * n);
-
-			for (unsigned int i = 0; i < n; i++) {
-				Eigen::Vector3f p((float)ps[3 * i + 0], (float)ps[3 * i + 1], (float)ps[3 * i + 2]);
-				m_points.push_back(p);
-			}
-
-			is.read((char*)ps, 3 * sizeof(double) * n);
-
-			for (unsigned int i = 0; i < n; i++) {
-				Eigen::Vector3f p((float)ps[3 * i + 0], (float)ps[3 * i + 1], (float)ps[3 * i + 2]);
-				m_normals.push_back(p);
-			}
-
-			delete ps;
-		}
-
-
-		//std::ofstream file("pointcloud.off");
-		//file << "OFF" << std::endl;
-		//file << m_points.size() << " 0 0" << std::endl;
-		//for(unsigned int i=0; i<m_points.size(); ++i)
-		//	file << m_points[i].x() << " " << m_points[i].y() << " " << m_points[i].z() << std::endl;
-		//file.close();
-
-		return true;
-	}
+//	bool readFromFile(const std::string& filename) {
+//		std::ifstream is(filename, std::ios::in | std::ios::binary);
+//		if (!is.is_open()) {
+//			std::cout << "ERROR: unable to read input file!" << std::endl;
+//			return false;
+//		}
+//
+//		char nBytes;
+//		is.read(&nBytes, sizeof(char));
+//
+//		unsigned int n;
+//		is.read((char*)&n, sizeof(unsigned int));
+//
+//		if (nBytes == sizeof(float)) {
+//			float* ps = new float[3 * n];
+//
+//			is.read((char*)ps, 3 * sizeof(float) * n);
+//
+//			for (unsigned int i = 0; i < n; i++) {
+//				Eigen::Vector3f p(ps[3 * i + 0], ps[3 * i + 1], ps[3 * i + 2]);
+//				m_points.push_back(p);
+//			}
+//
+//			is.read((char*)ps, 3 * sizeof(float) * n);
+//			for (unsigned int i = 0; i < n; i++) {
+//				Eigen::Vector3f p(ps[3 * i + 0], ps[3 * i + 1], ps[3 * i + 2]);
+//				m_normals.push_back(p);
+//			}
+//
+//			delete ps;
+//		}
+//		else {
+//			double* ps = new double[3 * n];
+//
+//			is.read((char*)ps, 3 * sizeof(double) * n);
+//
+//			for (unsigned int i = 0; i < n; i++) {
+//				Eigen::Vector3f p((float)ps[3 * i + 0], (float)ps[3 * i + 1], (float)ps[3 * i + 2]);
+//				m_points.push_back(p);
+//			}
+//
+//			is.read((char*)ps, 3 * sizeof(double) * n);
+//
+//			for (unsigned int i = 0; i < n; i++) {
+//				Eigen::Vector3f p((float)ps[3 * i + 0], (float)ps[3 * i + 1], (float)ps[3 * i + 2]);
+//				m_normals.push_back(p);
+//			}
+//
+//			delete ps;
+//		}
+//
+//
+//		//std::ofstream file("pointcloud.off");
+//		//file << "OFF" << std::endl;
+//		//file << m_points.size() << " 0 0" << std::endl;
+//		//for(unsigned int i=0; i<m_points.size(); ++i)
+//		//	file << m_points[i].x() << " " << m_points[i].y() << " " << m_points[i].z() << std::endl;
+//		//file.close();
+//
+//		return true;
+//	}
 
 	std::vector<Vector3f>& getPoints() {
 		return m_points;
@@ -212,5 +212,5 @@ public:
 private:
 	std::vector<Vector3f> m_points;
 	std::vector<Vector3f> m_normals;
-
+    // std::vector<Vector4uc> m_color; // color stored as 4 unsigned char
 };

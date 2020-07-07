@@ -10,7 +10,7 @@ set(CMAKE_CUDA_STANDARD 14)
 
 # Options
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../libs CACHE PATH "Path to lib folder")
-set(Eigen3_INCLUDE_DIR /usr/local/include/eigen3/ CACHE PATH "Path to Eigen source folder")
+set(Eigen3_INCLUDE_DIR /usr/include/eigen3/ CACHE PATH "Path to Eigen source folder")
 set(glog_INCLUDE_DIR ${LIBRARY_DIR}/glog-lib/include CACHE PATH "Path to glog source folder")
 set(Ceres_DIR ${LIBRARY_DIR}/Ceres/CMake CACHE PATH "Path to Ceres build folder")
 set(Ceres_INCLUDE_DIR ${Ceres_DIR}/../include)
@@ -81,13 +81,13 @@ set_target_properties(
         CUDA_SEPARABLE_COMPILATION ON)
 
 # # Visual Studio properties
-# set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT exercise_05)
-# set_property(TARGET exercise_05 PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/)
+# set_property(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT kinect_fusion)
+# set_property(TARGET kinect_fusion PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/)
 
 # On Windows copy dll to executable folder
 if(WIN32)
-    add_custom_command(TARGET exercise_05 POST_BUILD        # Adds a post-build event to MyTest
+    add_custom_command(TARGET kinect_fusion POST_BUILD        # Adds a post-build event to MyTest
         COMMAND ${CMAKE_COMMAND} -E copy_if_different  # which executes "cmake - E copy_if_different..."
             "${LIBRARY_DIR}/FreeImage/x64/FreeImage.dll"      # <--this is in-file
-            $<TARGET_FILE_DIR:exercise_05>)                 # <--this is out-file path
+            $<TARGET_FILE_DIR:kinect_fusion>)                 # <--this is out-file path
 endif(WIN32)
