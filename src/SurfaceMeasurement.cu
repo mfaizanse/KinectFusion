@@ -106,9 +106,9 @@ measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_
 }
 
 class SurfaceMeasurement {
-
+public:
     /*
-     * Set up surface mesurement for specific camera and filtering parameters
+     * Set up surface measurement for specific camera and filtering parameters
      * k_inv represents camera intrinsics
      */
     SurfaceMeasurement(Matrix3f k_inv, float sigma_s, float sigma_r, cudaStream_t stream = 0) {
@@ -137,7 +137,7 @@ class SurfaceMeasurement {
                         cudaStream_t stream = 0) {
         size_t sensorSize = width * height;
 
-        measureSurfaceVertices<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >> > (
+        measureSurfaceVertices<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_depthMap,
                 g_vertices,
                 consts,
@@ -149,7 +149,7 @@ class SurfaceMeasurement {
 
         size_t normalsSize = (width - 1) * (height - 1);
 
-        measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >> > (
+        measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_vertices,
                 g_normals,
                 width - 1,

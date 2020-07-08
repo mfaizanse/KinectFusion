@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 set(CMAKE_CONFIGURATION_TYPES Debug Release CACHE TYPE INTERNAL FORCE)
 
-set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-8")
+#set(CMAKE_CUDA_HOST_COMPILER "/usr/bin/gcc-8")
 
 project(kinect_fusion CUDA CXX)
 
@@ -36,6 +36,9 @@ set(CMAKE_CXX_STANDARD 14)
 find_package(Ceres REQUIRED)
 find_package(glog REQUIRED ${glog_DIR_HINT})
 
+find_package(CUDA  REQUIRED)
+include_directories("${CUDA_INCLUDE_DIRS}")
+
 add_definitions("-D_DISABLE_EXTENDED_ALIGNED_STORAGE")
 
 if (MSVC)
@@ -61,7 +64,7 @@ set(HEADER_FILES
     FreeImageHelper.h
     CudaError.h
     Macros.h
-    SurfaceMeasurement.h)
+        SurfaceMeasurement.cu)
 set(SOURCE_FILES 
     FreeImageHelper.cpp
 )
