@@ -4,9 +4,9 @@
 #include "Eigen.h"
 #include "VirtualSensor.h"
 #include "SimpleMesh.h"
-#include "ICPOptimizer.h"
 #include "PointCloud.h"
 #include "SurfaceMeasurement.h"
+#include "CudaICPOptimizer.h"
 
 #define SHOW_BUNNY_CORRESPONDENCES 0
 
@@ -58,7 +58,6 @@
 //}
 
 
-
 int reconstructRoom() {
     // Setup virtual sensor
 	std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
@@ -77,6 +76,7 @@ int reconstructRoom() {
     // Setup the ICP optimizer.
     ICPOptimizer* optimizer = new LinearICPOptimizer();
     optimizer->setMatchingMaxDistance(0.1f);
+    optimizer->setMatchingMaxAngle(1.0472f);
     optimizer->usePointToPlaneConstraints(true);
     optimizer->setNbOfIterations(20);
 
@@ -90,7 +90,11 @@ int reconstructRoom() {
     const unsigned depthFrameWidth = sensor.getDepthImageWidth();
     const unsigned depthFrameHeight = sensor.getDepthImageHeight();
 
-    SurfaceMeasurement surfaceMeasurement(depthIntrinsics, 0.5, 0.5,  0);
+    Matrix3f *cudaDepthIntrinsics;
+    CUDA_CALL(cudaMalloc((void **) &cudaDepthIntrinsics, sizeof(Matrix3f)));
+    CUDA_CALL(cudaMemcpy(cudaDepthIntrinsics, depthIntrinsics.data(), sizeof(Matrix3f), cudaMemcpyHostToDevice));
+
+    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
 
     Matrix4f globalCameraPose = Matrix4f::Identity();
 
@@ -99,27 +103,38 @@ int reconstructRoom() {
 	Matrix4f currentCameraToWorld = Matrix4f::Identity();
 	estimatedPoses.push_back(currentCameraToWorld.inverse());
 
-    PointCloud* previousFramePC = new PointCloud(depthMap, depthIntrinsics, depthExtrinsics, depthFrameWidth, depthFrameHeight );
+    // PointCloud* previousFramePC = new PointCloud(depthMap, depthIntrinsics, depthExtrinsics, depthFrameWidth, depthFrameHeight );
+
+    FrameData previousFrame;
 
 	int i = 0;
 	const int iMax = 2;
 	while (sensor.processNextFrame() && i <= iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
-//        FrameData currentFrame;
-//        currentFrame.depthMap = sensor.getDepth();
-//        currentFrame.width =  depthFrameWidth;
-//        currentFrame.height = depthFrameHeight;
+        FrameData currentFrame;
+        currentFrame.depthMap = sensor.getDepth();
+        currentFrame.width =  depthFrameWidth;
+        currentFrame.height = depthFrameHeight;
+
+        size_t N = currentFrame.width * currentFrame.height;
+
+        CUDA_CALL(cudaMalloc((void **) &currentFrame.depthMap, N * sizeof(float)));
+        CUDA_CALL(cudaMalloc((void **) &currentFrame.g_vertices, N * sizeof(Vector3f)));
+        CUDA_CALL(cudaMalloc((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
+
+        CUDA_CALL(cudaMemcpy(currentFrame.depthMap, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
 		// Step 1: Surface measurement
-        Vector3f *g_vertices;
-        Vector3f *g_normals;
-        // @TODO: allocate mem
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
-                                          g_vertices, g_normals, depthMap,
+                                          currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           false,  0);
 
 		// Step 2: Pose Estimation (Using Linearized ICP)
+		// Don't do ICP on 1st  frame
+		if (i > 0) {
+            currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, currentCameraToWorld);
+		}
 
 		// Step 3:  Volumetric Grid Fusion
 
@@ -127,12 +142,6 @@ int reconstructRoom() {
 
 		// Step 5: Update data (e.g. Poses, depth frame etc.) for next frame
 
-		// Create a Point Cloud for current frame
-		// We down-sample the source image to speed up the correspondence matching.
-		PointCloud source{ depthMap, depthIntrinsics, depthExtrinsics, depthFrameWidth, depthFrameHeight, 8 };
-
-        // Estimate the current camera pose from source to target mesh with ICP optimization.
-		currentCameraToWorld = optimizer->estimatePose(source, *previousFramePC, currentCameraToWorld);
 		
 		// Invert the transformation matrix to get the current camera pose.
 		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
@@ -142,29 +151,42 @@ int reconstructRoom() {
 		// update global rotation+translation
         globalCameraPose = currentCameraPose * globalCameraPose;
         depthExtrinsics = currentCameraToWorld * depthExtrinsics;
-		// Update previous frame PC
-        delete previousFramePC;
-        previousFramePC = new PointCloud(depthMap, depthIntrinsics, depthExtrinsics, depthFrameWidth, depthFrameHeight );
+
+		// Update previous frame data
+        CUDA_CALL(cudaFree(previousFrame.depthMap));
+        CUDA_CALL(cudaFree(previousFrame.g_vertices));
+        CUDA_CALL(cudaFree(previousFrame.g_normals));
+        if (currentFrame.globalCameraPose != NULL) {
+            CUDA_CALL(cudaFree(previousFrame.g_normals));
+        }
+
+        // @TODO: check if updating with correct global camera pose
+        CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
+        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
+        // @TODO:  transform  all  points  and normals to     new  camera   pose
+        previousFrame = currentFrame;
 
 		// if (i % 5 == 0) {
-		if (1) {
-            // We write out the mesh to file for debugging.
-            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
-            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
-
-            std::stringstream ss;
-            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
-            if (!resultingMesh.writeMesh(ss.str())) {
-                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-                return -1;
-            }
-		}
+//		if (1) {
+//            // We write out the mesh to file for debugging.
+//            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
+//            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
+//            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
+//
+//            std::stringstream ss;
+//            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
+//            if (!resultingMesh.writeMesh(ss.str())) {
+//                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+//                return -1;
+//            }
+//		}
 		
 		i++;
 	}
 
 	delete optimizer;
+    CUDA_CALL(cudaFree(cudaDepthIntrinsics));
 
 	return 0;
 }

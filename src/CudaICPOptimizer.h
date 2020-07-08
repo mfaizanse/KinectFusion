@@ -5,7 +5,7 @@
 
 //#include <ceres/ceres.h>
 //#include <ceres/rotation.h>
-#include <flann/flann.hpp>
+//#include <flann/flann.hpp>
 
 #include "SimpleMesh.h"
 #include "NearestNeighbor.h"
@@ -19,6 +19,7 @@ struct FrameData {
     Vector3f *g_normals;
     size_t width;
     size_t height;
+    Matrix4f* globalCameraPose;
 };
 
 /**
@@ -32,12 +33,18 @@ static inline void fillVector(const Vector3f& input, T* output) {
 }
 
 __global__ void getCorrespondences(
-        float *depthMap,
-        Vector3f *vertices,
-        constants consts,
-        size_t width,
-        size_t height,
-        size_t N
+        float *currentDepthMap,
+        Matrix4f *previousGlobalCameraPose,
+        Vector3f *currentVertices,
+        Vector3f *currentNormals,
+        Vector3f *previousVertices,
+        Vector3f *previousNormals,
+        Matrix3f *intrinsics,
+        const size_t width,
+        const size_t height,
+        const size_t N,
+        const float distanceThreshold,
+        const float angleThreshold
 ) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -46,16 +53,45 @@ __global__ void getCorrespondences(
         return;
     }
 
-    size_t u = idx / width;
-    size_t v = idx % width;
+    if (currentDepthMap[idx] <= 0) {
+        return;
+    }
 
-    //Back projection with filtered depth measurement
-//    vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
-//                    Vector3f(u, v, 1);
+    // Transform previous point to camera coordinates from  world coordinates
+    Vector3f v_t_1 =  (previousGlobalCameraPose->inverse() * previousVertices[idx].homogeneous()).hnormalized();
 
-    // @TODO: FIX    THIS
-    vertices[idx] =  consts.g_k_inv[0] *
-                     Vector3f(u, v, 1);
+    // Perspective project to image space
+    Vector3f p = *intrinsics * v_t_1;
+    int u = (int) (p[0] / p[2]);
+    int v = (int) (p[1] / p[2]);
+
+    // check if this point lies in frame
+    if(u < 0 || u > width - 1 || v  < 0 ||  v > height - 1) {
+        return;
+    }
+
+    // Get this point p in current frame transform it into world coordinates
+    size_t id2 = u * width + v;
+    Vector3f v_t = (*previousGlobalCameraPose * currentVertices[id2].homogeneous()).hnormalized();
+
+    Matrix3f rotation = previousGlobalCameraPose->block(0,  0, 3, 3);
+    Vector3f n_t = rotation * currentNormals[id2];
+
+    // check distance threshold
+    float distance = (v_t - previousVertices[idx]).norm();
+    if (distance > distanceThreshold) {
+        return;
+    }
+
+    // check angle between normals
+    float angle = (n_t.dot(previousNormals[idx])) / (n_t.norm() * previousNormals[idx].norm());
+    angle = acos(angle);
+
+    if (angle > angleThreshold) {
+        return;
+    }
+
+    // @TODO: Correct  match, add  this to matches  list
 
 }
 
@@ -67,11 +103,18 @@ public:
     ICPOptimizer() :
             m_bUsePointToPlaneConstraints{ false },
             m_nIterations{ 20 },
-            m_nearestNeighborSearch{ std::make_unique<NearestNeighborSearchFlann>() }
+            distanceThreshold{ 0.1f },
+            angleThreshold{ 1.0472f }
+            //m_nearestNeighborSearch{ std::make_unique<NearestNeighborSearchFlann>() }
     { }
 
     void setMatchingMaxDistance(float maxDistance) {
-        m_nearestNeighborSearch->setMatchingMaxDistance(maxDistance);
+        distanceThreshold = maxDistance;
+        //m_nearestNeighborSearch->setMatchingMaxDistance(maxDistance);
+    }
+
+    void setMatchingMaxAngle(float maxAngle) {
+        angleThreshold = maxAngle;
     }
 
     void usePointToPlaneConstraints(bool bUsePointToPlaneConstraints) {
@@ -82,14 +125,16 @@ public:
         m_nIterations = nIterations;
     }
 
-    virtual Matrix4f estimatePose(const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) = 0;
+    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) = 0;
 
     virtual ~ICPOptimizer() {}
 
 protected:
     bool m_bUsePointToPlaneConstraints;
     unsigned m_nIterations;
-    std::unique_ptr<NearestNeighborSearch> m_nearestNeighborSearch;
+    float distanceThreshold;
+    float angleThreshold;
+    //std::unique_ptr<NearestNeighborSearch> m_nearestNeighborSearch;
 
     std::vector<Vector3f> transformPoints(const std::vector<Vector3f>& sourcePoints, const Matrix4f& pose) {
         std::vector<Vector3f> transformedPoints;
@@ -148,21 +193,42 @@ public:
     LinearICPOptimizer() {}
     ~LinearICPOptimizer() {}
 
-    virtual Matrix4f estimatePose(const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) override {
+    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) override {
 
-        size_t sensorSize = currentFrame.width * currentFrame.height;
-
-        // Build the index of the FLANN tree (for fast nearest neighbor lookup).
-        // m_nearestNeighborSearch->buildIndex(target.getPoints());
+        size_t N = currentFrame.width * currentFrame.height;
 
         // The initial estimate can be given as an argument.
         Matrix4f estimatedPose = initialPose;
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
-//            std::cout << "Matching points ... Iteration: " << i << std::endl;
-//            clock_t begin = clock();
-//
+            std::cout << "Matching points ... Iteration: " << i << std::endl;
+            clock_t begin = clock();
+
+            getCorrespondences<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+                    currentFrame.depthMap,
+                    previousFrame.globalCameraPose,
+                    currentFrame.g_vertices,
+                    currentFrame.g_normals,
+                    previousFrame.g_vertices,
+                    previousFrame.g_normals,
+                    &intrinsics,
+                    currentFrame.width,
+                    currentFrame.height,
+                    N,
+                    distanceThreshold,
+                    angleThreshold
+                    );
+
+            // Wait for GPU to finish before accessing on host
+            cudaDeviceSynchronize();
+
+            CUDA_CHECK_ERROR
+
+            clock_t end = clock();
+            double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
+            std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
+
 //            auto transformedPoints = transformPoints(source.getPoints(), estimatedPose);
 //            auto transformedNormals = transformNormals(source.getNormals(), estimatedPose);
 //
