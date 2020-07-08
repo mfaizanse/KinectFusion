@@ -1,6 +1,6 @@
 #pragma once
 
-#include "VirtualSensor.h"
+//#include "VirtualSensor.h"
 #include "Eigen.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
@@ -18,9 +18,9 @@ struct constants {
 /*
  * Inline this function for better readability
  */
-__device__ __forceinline__ float fancyN(float sigma, float t) {
-    pow(M_E, -pow(t, 2) / pow(sigma, 2));
-}
+//__device__ __forceinline__ float fancyN(float sigma, float t) {
+//    pow(M_E, -pow(t, 2) / pow(sigma, 2));
+//}
 
 /*
  * https://en.wikipedia.org/wiki/Bilateral_filter
@@ -30,40 +30,40 @@ __device__ __forceinline__ float fancyN(float sigma, float t) {
  * Sigma_s represents the spatial parameter, increases smoothing
  * Parameter Wp is now computed alongside, still not sure if this is correct
  */
-__device__ float
-computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, size_t width, size_t N) {
-    float sum = 0.0f;
-    float sum2 = 0.0f;
-
-    for (size_t i = 0; i < N; i++) {
-        size_t u2 = i / width;
-        size_t v2 = i % width;
-        //Distance between pixels
-        float t1 = sqrt(pow(u - u2, 2) + pow(v - v2, 2));
-        //This can be implented far more efficient, but depends heavily on sigma_r
-        if(t1 < 3 * sigma_r) {
-            //Difference of depth measurements
-            float t2 = abs(depthMap[u * width + v] - depthMap[i]);
-            //Smoothing factor
-            float fn_s = fancyN(sigma_s, t1);
-            //Range factor
-            float fn_r = fancyN(sigma_r, t2);
-            //Weight
-            float w = fn_s * fn_r;
-            sum += w * depthMap[i];
-            //Normalizing factor
-            sum2 += w;
-        }
-    }
-
-    //Return normalized result
-    return sum / sum2;
-}
+//__device__ float
+//computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, size_t width, size_t N) {
+//    float sum = 0.0f;
+//    float sum2 = 0.0f;
+//
+//    for (size_t i = 0; i < N; i++) {
+//        size_t u2 = i / width;
+//        size_t v2 = i % width;
+//        //Distance between pixels
+//        float t1 = sqrt(pow(u - u2, 2) + pow(v - v2, 2));
+//        //This can be implented far more efficient, but depends heavily on sigma_r
+//        if(t1 < 3 * sigma_r) {
+//            //Difference of depth measurements
+//            float t2 = abs(depthMap[u * width + v] - depthMap[i]);
+//            //Smoothing factor
+//            float fn_s = fancyN(sigma_s, t1);
+//            //Range factor
+//            float fn_r = fancyN(sigma_r, t2);
+//            //Weight
+//            float w = fn_s * fn_r;
+//            sum += w * depthMap[i];
+//            //Normalizing factor
+//            sum2 += w;
+//        }
+//    }
+//
+//    //Return normalized result
+//    return sum / sum2;
+//}
 
 /*
  * Compute vertices for valid depth measurements
  */
-__host__ __device__ void measureSurfaceVertices(
+__global__ void measureSurfaceVertices(
         float *depthMap,
         Vector3f *vertices,
         constants consts,
@@ -82,7 +82,11 @@ __host__ __device__ void measureSurfaceVertices(
     size_t v = idx % width;
 
     //Back projection with filtered depth measurement
-    vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
+//    vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
+//                    Vector3f(u, v, 1);
+
+    // @TODO: FIX    THIS
+    vertices[idx] =  consts.g_k_inv[0] *
                     Vector3f(u, v, 1);
 
 }
@@ -90,8 +94,7 @@ __host__ __device__ void measureSurfaceVertices(
 /*
  * Compute normals for previously computed vertices
  */
-__host__ __device__ void
-measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_t height, size_t N) {
+__global__ void measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_t height, size_t N) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     //Terminate all un-necessary threads
@@ -137,11 +140,13 @@ public:
                         cudaStream_t stream = 0) {
         size_t sensorSize = width * height;
 
+        // (sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE
         measureSurfaceVertices<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_depthMap,
                 g_vertices,
                 consts,
                 width,
+                height,
                 sensorSize
         );
 
@@ -149,6 +154,7 @@ public:
 
         size_t normalsSize = (width - 1) * (height - 1);
 
+        // (sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE
         measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_vertices,
                 g_normals,
