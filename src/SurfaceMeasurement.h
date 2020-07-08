@@ -136,7 +136,7 @@ public:
      *  Returns it's result in the g_vertices and g_normals vector, kept in GPU memory
      *  Validity map is not yet computed as
      */
-    void measureSurface(size_t width, size_t height, Vector3f *g_vertices, Vector3f *g_normals, float *g_depthMap, bool *g_validityMap,
+    void measureSurface(size_t width, size_t height, Vector3f *g_vertices, Vector3f *g_normals, float *g_depthMap, bool g_validityMap,
                         cudaStream_t stream = 0) {
         size_t sensorSize = width * height;
 

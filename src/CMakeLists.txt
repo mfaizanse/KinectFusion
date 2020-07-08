@@ -66,17 +66,19 @@ set(HEADER_FILES
     FreeImageHelper.h
     CudaError.h
     Macros.h
-        SurfaceMeasurement.cu)
-set(SOURCE_FILES 
-    FreeImageHelper.cpp
+    SurfaceMeasurement.h
+    CudaICPOptimizer.h)
+set(SOURCE_FILES
+        FreeImageHelper.cpp
 )
 
 link_directories(${FreeImage_LIBRARY_DIR})
 link_directories(${Lz4_LIBRARY_DIR})
 link_directories(${Flann_LIBRARY_DIR})
-add_executable(kinect_fusion main.cpp ${HEADER_FILES} ${SOURCE_FILES})
+add_executable(kinect_fusion main.cu ${HEADER_FILES} ${SOURCE_FILES})
 #target_link_libraries (kinect_fusion Eigen3::Eigen)
 #target_link_libraries(kinect_fusion ceres glog::glog freeimage)
+target_link_libraries(kinect_fusion freeimage)
 target_link_libraries(kinect_fusion flann flann_cpp lz4)
 target_include_directories(kinect_fusion PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
 

@@ -6,7 +6,7 @@
 #include "SimpleMesh.h"
 #include "ICPOptimizer.h"
 #include "PointCloud.h"
-#include "SurfaceMeasurement.cu"
+#include "SurfaceMeasurement.h"
 
 #define SHOW_BUNNY_CORRESPONDENCES 0
 
@@ -57,6 +57,8 @@
 //	resultingMesh.writeMesh(std::string("../output/correspondences.off"));
 //}
 
+
+
 int reconstructRoom() {
     // Setup virtual sensor
 	std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
@@ -104,8 +106,18 @@ int reconstructRoom() {
 	while (sensor.processNextFrame() && i <= iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
+//        FrameData currentFrame;
+//        currentFrame.depthMap = sensor.getDepth();
+//        currentFrame.width =  depthFrameWidth;
+//        currentFrame.height = depthFrameHeight;
 
 		// Step 1: Surface measurement
+        Vector3f *g_vertices;
+        Vector3f *g_normals;
+        // @TODO: allocate mem
+        surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
+                                          g_vertices, g_normals, depthMap,
+                                          false,  0);
 
 		// Step 2: Pose Estimation (Using Linearized ICP)
 
