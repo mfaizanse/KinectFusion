@@ -8,7 +8,7 @@
 //#include <flann/flann.hpp>
 
 #include "SimpleMesh.h"
-#include "NearestNeighbor.h"
+//#include "NearestNeighbor.h"
 #include "PointCloud.h"
 #include "ProcrustesAligner.h"
 
@@ -22,15 +22,15 @@ struct FrameData {
     Matrix4f* globalCameraPose;
 };
 
-/**
- * Helper methods for writing Ceres cost functions.
- */
-template <typename T>
-static inline void fillVector(const Vector3f& input, T* output) {
-    output[0] = T(input[0]);
-    output[1] = T(input[1]);
-    output[2] = T(input[2]);
-}
+///**
+// * Helper methods for writing Ceres cost functions.
+// */
+//template <typename T>
+//static inline void fillVector(const Vector3f& input, T* output) {
+//    output[0] = T(input[0]);
+//    output[1] = T(input[1]);
+//    output[2] = T(input[2]);
+//}
 
 __global__ void getCorrespondences(
         float *currentDepthMap,
@@ -163,26 +163,26 @@ protected:
         return transformedNormals;
     }
 
-    void pruneCorrespondences(const std::vector<Vector3f>& sourceNormals, const std::vector<Vector3f>& targetNormals, std::vector<Match>& matches) {
-        const unsigned nPoints = sourceNormals.size();
-
-        for (unsigned i = 0; i < nPoints; i++) {
-            Match& match = matches[i];
-            if (match.idx >= 0) {
-                const auto& sourceNormal = sourceNormals[i];
-                const auto& targetNormal = targetNormals[match.idx];
-
-                // TODO: Invalidate the match (set it to -1) if the angle between the normals is greater than 60
-                float angle = (sourceNormal.dot(targetNormal)) / (sourceNormal.norm() * targetNormal.norm());
-                angle = acos(angle);
-                //// 60 degrees = 1.0472 radians
-                if (angle > 1.0472) {
-                    match.idx = -1;
-                    matches[i].weight = 0;
-                }
-            }
-        }
-    }
+//    void pruneCorrespondences(const std::vector<Vector3f>& sourceNormals, const std::vector<Vector3f>& targetNormals, std::vector<Match>& matches) {
+//        const unsigned nPoints = sourceNormals.size();
+//
+//        for (unsigned i = 0; i < nPoints; i++) {
+//            Match& match = matches[i];
+//            if (match.idx >= 0) {
+//                const auto& sourceNormal = sourceNormals[i];
+//                const auto& targetNormal = targetNormals[match.idx];
+//
+//                // TODO: Invalidate the match (set it to -1) if the angle between the normals is greater than 60
+//                float angle = (sourceNormal.dot(targetNormal)) / (sourceNormal.norm() * targetNormal.norm());
+//                angle = acos(angle);
+//                //// 60 degrees = 1.0472 radians
+//                if (angle > 1.0472) {
+//                    match.idx = -1;
+//                    matches[i].weight = 0;
+//                }
+//            }
+//        }
+//    }
 };
 
 /**

@@ -118,6 +118,65 @@ public:
 		}
 	}
 
+    /**
+     * Constructs a mesh from the current color and 3d points.
+     */
+    SimpleMesh(Vector3f *g_vertices, size_t width, size_t height, BYTE* colorMap, float edgeThreshold = 0.01f) {
+
+        // Compute vertices from g_vertices
+        m_vertices.resize(width * height);
+        // For every pixel row.
+        for (unsigned int v = 0; v < height; ++v) {
+            // For every pixel in a row.
+            for (unsigned int u = 0; u < width; ++u) {
+                unsigned int idx = v*width + u; // linearized index
+
+                if (g_vertices[idx] == Vector3f(-INFINITY,-INFINITY,-INFINITY)) {
+                    std:: cout << "ignoring -inf" << std::endl;
+                    m_vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
+                    m_vertices[idx].color = Vector4uc(0, 0, 0, 0);
+                }
+                else {
+                    m_vertices[idx].position = Vector4f(g_vertices[idx][0], g_vertices[idx][1], g_vertices[idx][2], 1.0f);
+
+                    // Write fixed color to all  vertices.
+                    m_vertices[idx].color = Vector4uc(colorMap[4 * idx + 0], colorMap[4 * idx + 1], colorMap[4 * idx + 2], colorMap[4 * idx + 3]);
+                }
+            }
+        }
+
+        // Compute triangles (faces).
+        m_triangles.reserve((height - 1) * (width - 1) * 2);
+        for (unsigned int i = 0; i < height - 1; i++) {
+            for (unsigned int j = 0; j < width - 1; j++) {
+                unsigned int i0 = i*width + j;
+                unsigned int i1 = (i + 1)*width + j;
+                unsigned int i2 = i*width + j + 1;
+                unsigned int i3 = (i + 1)*width + j + 1;
+
+                bool valid0 = m_vertices[i0].position.allFinite();
+                bool valid1 = m_vertices[i1].position.allFinite();
+                bool valid2 = m_vertices[i2].position.allFinite();
+                bool valid3 = m_vertices[i3].position.allFinite();
+
+                if (valid0 && valid1 && valid2) {
+                    float d0 = (m_vertices[i0].position - m_vertices[i1].position).norm();
+                    float d1 = (m_vertices[i0].position - m_vertices[i2].position).norm();
+                    float d2 = (m_vertices[i1].position - m_vertices[i2].position).norm();
+                    if (edgeThreshold > d0 && edgeThreshold > d1 && edgeThreshold > d2)
+                        addFace(i0, i1, i2);
+                }
+                if (valid1 && valid2 && valid3) {
+                    float d0 = (m_vertices[i3].position - m_vertices[i1].position).norm();
+                    float d1 = (m_vertices[i3].position - m_vertices[i2].position).norm();
+                    float d2 = (m_vertices[i1].position - m_vertices[i2].position).norm();
+                    if (edgeThreshold > d0 && edgeThreshold > d1 && edgeThreshold > d2)
+                        addFace(i1, i3, i2);
+                }
+            }
+        }
+    }
+
 	void clear() {
 		m_vertices.clear();
 		m_triangles.clear();

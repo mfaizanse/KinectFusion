@@ -1,6 +1,5 @@
 #pragma once
 
-//#include "VirtualSensor.h"
 #include "Eigen.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
@@ -72,7 +71,7 @@ computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, siz
 /*
  * Compute vertices for valid depth measurements
  */
-__host__ __device__ void measureSurfaceVertices(
+__global__ void measureSurfaceVertices(
         float *depthMap,
         Vector3f *vertices,
         constants consts,
@@ -103,7 +102,7 @@ __host__ __device__ void measureSurfaceVertices(
 /*
  * Compute normals for previously computed vertices
  */
-__host__ __device__ void
+__global__ void
 measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_t height, size_t N) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
