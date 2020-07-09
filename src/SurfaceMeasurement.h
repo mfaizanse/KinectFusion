@@ -117,7 +117,7 @@ measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_
     size_t u = idx / width;
     size_t v = idx % width;
 
-    Vector3f invalid = Vector3f(-INFINITY,-INFINITY,-INFINITY);
+    Vector3f invalid = Vector3f(-MINF,-MINF,-MINF);
 
     if(vertices[idx + width] != invalid && vertices[idx] != invalid && vertices[idx + 1] != invalid) {
         normals[idx] = (vertices[idx + width] - vertices[idx]).cross(vertices[idx + 1] - vertices[idx]).normalized();
@@ -173,17 +173,17 @@ public:
 
         CUDA_CHECK_ERROR
 
-//        size_t normalsSize = (width - 1) * (height - 1);
-//
-//        measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
-//                g_vertices,
-//                g_normals,
-//                width - 1,
-//                height - 1,
-//                normalsSize
-//        );
-//
-//        CUDA_CHECK_ERROR
+        size_t normalsSize = (width - 1) * (height - 1);
+
+        measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
+                g_vertices,
+                g_normals,
+                width - 1,
+                height - 1,
+                normalsSize
+        );
+
+        CUDA_CHECK_ERROR
 
         // Wait for GPU to finish before accessing on host
         cudaDeviceSynchronize();
