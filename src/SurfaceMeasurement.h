@@ -35,9 +35,18 @@ computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, siz
     float sum = 0.0f;
     float sum2 = 0.0f;
 
-    for (size_t i = 0; i < N; i++) {
-        size_t u2 = i / width;
-        size_t v2 = i % width;
+    //Use a 3x3 grid as the smoothing kernel
+    for (size_t i = 0; i < 9; i++) {
+        size_t u2 = u + (i/3) - 1;
+        size_t v2 = v + (i%3) - 1;
+        //Skip depth measurements over the edges of the image
+        if(u2 < 0 || v2 < 0 || u2 == width || v2 == (N/width)){
+            continue;
+        }
+        //Skip invalid depth measurements
+        if(depthMap[u2 * width + v2] <= 0.0f) {
+            continue;
+        }
         //Distance between pixels
         float t1 = sqrt(pow(u - u2, 2) + pow(v - v2, 2));
         //This can be implented far more efficient, but depends heavily on sigma_r
@@ -82,8 +91,12 @@ __host__ __device__ void measureSurfaceVertices(
     size_t v = idx % width;
 
     //Back projection with filtered depth measurement
-    vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
-                    Vector3f(u, v, 1);
+    if(depthMap[idx] <= 0.0f) {
+        vertices[idx] = Vector3f(-INFINITY,-INFINITY,-INFINITY);
+    } else {
+        vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
+                       Vector3f(u, v, 1);
+    }
 
 }
 
@@ -102,7 +115,13 @@ measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_
     size_t u = idx / width;
     size_t v = idx % width;
 
-    normals[idx] = (vertices[idx + width] - vertices[idx]).cross(vertices[idx + 1] - vertices[idx]).normalized();
+    Vector3f invalid = Vector3f(-INFINITY,-INFINITY,-INFINITY);
+
+    if(vertices[idx + width] != invalid && vertices[idx] != invalid && vertices[idx + 1] != invalid) {
+        normals[idx] = (vertices[idx + width] - vertices[idx]).cross(vertices[idx + 1] - vertices[idx]).normalized();
+    } else {
+        normals[idx] = invalid;
+    }
 }
 
 class SurfaceMeasurement {
@@ -133,7 +152,7 @@ class SurfaceMeasurement {
      *  Returns it's result in the g_vertices and g_normals vector, kept in GPU memory
      *  Validity map is not yet computed as
      */
-    void measureSurface(size_t width, size_t height, Vector3f *g_vertices, Vector3f *g_normals, float *g_depthMap, bool *g_validityMap,
+    void measureSurface(size_t width, size_t height, Vector3f *g_vertices, Vector3f *g_normals, float *g_depthMap,
                         cudaStream_t stream = 0) {
         size_t sensorSize = width * height;
 

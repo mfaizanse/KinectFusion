@@ -10,7 +10,6 @@ set(CMAKE_CUDA_STANDARD 14)
 
 # Options
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../libs CACHE PATH "Path to lib folder")
-set(Eigen3_INCLUDE_DIR /usr/local/include/eigen3/ CACHE PATH "Path to Eigen source folder")
 set(glog_INCLUDE_DIR ${LIBRARY_DIR}/glog-lib/include CACHE PATH "Path to glog source folder")
 set(Ceres_DIR ${LIBRARY_DIR}/Ceres/CMake CACHE PATH "Path to Ceres build folder")
 set(Ceres_INCLUDE_DIR ${Ceres_DIR}/../include)
@@ -35,6 +34,7 @@ set(CMAKE_CXX_STANDARD 14)
 
 find_package(Ceres REQUIRED)
 find_package(glog REQUIRED ${glog_DIR_HINT})
+find_package(Eigen3 3.3 REQUIRED)
 
 add_definitions("-D_DISABLE_EXTENDED_ALIGNED_STORAGE")
 
@@ -70,10 +70,8 @@ link_directories(${FreeImage_LIBRARY_DIR})
 link_directories(${Lz4_LIBRARY_DIR})
 link_directories(${Flann_LIBRARY_DIR})
 add_executable(kinect_fusion main.cpp ${HEADER_FILES} ${SOURCE_FILES})
-target_link_libraries (kinect_fusion Eigen3::Eigen)
-target_link_libraries(kinect_fusion ceres glog::glog freeimage)
-target_link_libraries(kinect_fusion flann flann_cpp lz4)
-target_include_directories(kinect_fusion PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}  ${Ceres_INCLUDE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
+target_link_libraries (kinect_fusion Eigen3::Eigen freeimage)
+target_include_directories(kinect_fusion PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}  ${Ceres_INCLUDE_DIR} ${glog_INCLUDE_DIR} ${FreeImage_INCLUDE_DIR})
 
 set_target_properties(
         kinect_fusion
