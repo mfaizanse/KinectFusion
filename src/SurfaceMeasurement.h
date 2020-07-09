@@ -10,8 +10,8 @@
 
 struct constants {
     Matrix3f *g_k_inv;
-    float sigma_s;
-    float sigma_r;
+    float* sigma_s;
+    float* sigma_r;
 };
 
 /*
@@ -36,8 +36,8 @@ computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, siz
 
     //Use a 3x3 grid as the smoothing kernel
     for (size_t i = 0; i < 9; i++) {
-        size_t u2 = u + (i/3) - 1;
-        size_t v2 = v + (i%3) - 1;
+        int u2 = u + (i/3) - 1;
+        int v2 = v + (i%3) - 1;
         //Skip depth measurements over the edges of the image
         if(u2 < 0 || v2 < 0 || u2 == width || v2 == (N/width)){
             continue;
@@ -93,8 +93,11 @@ __global__ void measureSurfaceVertices(
     if(depthMap[idx] <= 0.0f) {
         vertices[idx] = Vector3f(-INFINITY,-INFINITY,-INFINITY);
     } else {
-        vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
-                       Vector3f(u, v, 1);
+//        vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
+//                       Vector3f(u, v, 1);
+        vertices[idx] = depthMap[idx] * consts.g_k_inv[0] *
+                        Vector3f(u, v, 1);
+        //printf("%f \n", vertices[idx].x());
     }
 
 }
@@ -134,12 +137,16 @@ public:
         Matrix3f *g_k_inv;
 
         CUDA_CALL(cudaMalloc((void **) &g_k_inv, sizeof(Matrix3f)));
+        CUDA_CALL(cudaMalloc((void **) &consts.sigma_s, sizeof(float)));
+        CUDA_CALL(cudaMalloc((void **) &consts.sigma_r, sizeof(float)));
 
         CUDA_CALL(cudaMemcpyAsync(g_k_inv, k_inv.data(), sizeof(Matrix3f), cudaMemcpyHostToDevice, stream));
+        CUDA_CALL(cudaMemcpyAsync(consts.sigma_s, &sigma_s, sizeof(float), cudaMemcpyHostToDevice, stream));
+        CUDA_CALL(cudaMemcpyAsync(consts.sigma_r, &sigma_r, sizeof(float), cudaMemcpyHostToDevice, stream));
 
         consts.g_k_inv = g_k_inv;
-        consts.sigma_s = sigma_s;
-        consts.sigma_r = sigma_r;
+//        consts.sigma_s = sigma_s;
+//        consts.sigma_r = sigma_r;
 
     }
 
@@ -155,7 +162,7 @@ public:
                         cudaStream_t stream = 0) {
         size_t sensorSize = width * height;
 
-        measureSurfaceVertices<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >> > (
+        measureSurfaceVertices<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_depthMap,
                 g_vertices,
                 consts,
@@ -166,17 +173,25 @@ public:
 
         CUDA_CHECK_ERROR
 
-        size_t normalsSize = (width - 1) * (height - 1);
+//        size_t normalsSize = (width - 1) * (height - 1);
+//
+//        measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
+//                g_vertices,
+//                g_normals,
+//                width - 1,
+//                height - 1,
+//                normalsSize
+//        );
+//
+//        CUDA_CHECK_ERROR
 
-        measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >> > (
-                g_vertices,
-                g_normals,
-                width - 1,
-                height - 1,
-                normalsSize
-        );
+        // Wait for GPU to finish before accessing on host
+        cudaDeviceSynchronize();
 
-        CUDA_CHECK_ERROR
+//        printf("a \n");
+//        printf("%f \n", g_vertices[0].x());
+//        printf("b \n");
+
     }
 
     /*
@@ -184,6 +199,8 @@ public:
      */
     ~SurfaceMeasurement() {
         CUDA_CALL(cudaFree(consts.g_k_inv));
+        CUDA_CALL(cudaFree(consts.sigma_r));
+        CUDA_CALL(cudaFree(consts.sigma_s));
     }
 
 private:

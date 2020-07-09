@@ -122,7 +122,6 @@ public:
      * Constructs a mesh from the current color and 3d points.
      */
     SimpleMesh(Vector3f *g_vertices, size_t width, size_t height, BYTE* colorMap, float edgeThreshold = 0.01f) {
-
         // Compute vertices from g_vertices
         m_vertices.resize(width * height);
         // For every pixel row.
@@ -131,13 +130,12 @@ public:
             for (unsigned int u = 0; u < width; ++u) {
                 unsigned int idx = v*width + u; // linearized index
 
-                if (g_vertices[idx] == Vector3f(-INFINITY,-INFINITY,-INFINITY)) {
-                    std:: cout << "ignoring -inf" << std::endl;
+                if (g_vertices[idx].x() == -INFINITY) {
                     m_vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
                     m_vertices[idx].color = Vector4uc(0, 0, 0, 0);
                 }
                 else {
-                    m_vertices[idx].position = Vector4f(g_vertices[idx][0], g_vertices[idx][1], g_vertices[idx][2], 1.0f);
+                    m_vertices[idx].position = Vector4f(g_vertices[idx].x(), g_vertices[idx].y(), g_vertices[idx].z(), 1.0f);
 
                     // Write fixed color to all  vertices.
                     m_vertices[idx].color = Vector4uc(colorMap[4 * idx + 0], colorMap[4 * idx + 1], colorMap[4 * idx + 2], colorMap[4 * idx + 3]);
