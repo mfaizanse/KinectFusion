@@ -18,7 +18,7 @@ struct constants {
  * Inline this function for better readability
  */
 __device__ __forceinline__ float fancyN(float sigma, float t) {
-    pow(M_E, -pow(t, 2) / pow(sigma, 2));
+    return pow(M_E, -pow(t, 2) / pow(sigma, 2));
 }
 
 /*
@@ -91,7 +91,7 @@ __global__ void measureSurfaceVertices(
 
     //Back projection with filtered depth measurement
     if(depthMap[idx] <= 0.0f) {
-        vertices[idx] = Vector3f(-INFINITY,-INFINITY,-INFINITY);
+        vertices[idx] = Vector3f(-MINF,-MINF,-MINF);
     } else {
 //        vertices[idx] = computeDk(depthMap, u, v, consts.sigma_s, consts.sigma_r, width, N) * consts.g_k_inv[0] *
 //                       Vector3f(u, v, 1);
@@ -119,7 +119,10 @@ measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_
 
     Vector3f invalid = Vector3f(-MINF,-MINF,-MINF);
 
-    if(vertices[idx + width] != invalid && vertices[idx] != invalid && vertices[idx + 1] != invalid) {
+    if (u == 0 || v ==  0 || u == width-1 || v == height-1)  {
+        normals[idx] = invalid;
+    }
+    else if(vertices[idx + width] != invalid && vertices[idx] != invalid && vertices[idx + 1] != invalid) {
         normals[idx] = (vertices[idx + width] - vertices[idx]).cross(vertices[idx + 1] - vertices[idx]).normalized();
     } else {
         normals[idx] = invalid;
@@ -173,14 +176,12 @@ public:
 
         CUDA_CHECK_ERROR
 
-        size_t normalsSize = (width - 1) * (height - 1);
-
         measureSurfaceNormals<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_vertices,
                 g_normals,
-                width - 1,
-                height - 1,
-                normalsSize
+                width,
+                height,
+                sensorSize
         );
 
         CUDA_CHECK_ERROR

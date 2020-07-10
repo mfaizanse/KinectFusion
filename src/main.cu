@@ -4,59 +4,10 @@
 #include "Eigen.h"
 #include "VirtualSensor.h"
 #include "SimpleMesh.h"
-#include "PointCloud.h"
 #include "SurfaceMeasurement.h"
 #include "CudaICPOptimizer.h"
 
-#define SHOW_BUNNY_CORRESPONDENCES 0
-
-#define USE_POINT_TO_PLANE	1
-#define USE_LINEAR_ICP		1
-#define RUN_SEQUENCE_ICP	1
-
-//void debugCorrespondenceMatching() {
-//	// Load the source and target mesh.
-//	const std::string filenameSource = std::string("../data/bunny/bunny_part2_trans.off");
-//	const std::string filenameTarget = std::string("../data/bunny/bunny_part1.off");
-//
-//	SimpleMesh sourceMesh;
-//	if (!sourceMesh.loadMesh(filenameSource)) {
-//		std::cout << "Mesh file wasn't read successfully." << std::endl;
-//		return;
-//	}
-//
-//	SimpleMesh targetMesh;
-//	if (!targetMesh.loadMesh(filenameTarget)) {
-//		std::cout << "Mesh file wasn't read successfully." << std::endl;
-//		return;
-//	}
-//
-//	PointCloud source{ sourceMesh };
-//	PointCloud target{ targetMesh };
-//
-//	// Search for matches using FLANN.
-//	std::unique_ptr<NearestNeighborSearch> nearestNeighborSearch = std::make_unique<NearestNeighborSearchFlann>();
-//	nearestNeighborSearch->setMatchingMaxDistance(0.0001f);
-//	nearestNeighborSearch->buildIndex(target.getPoints());
-//	auto matches = nearestNeighborSearch->queryMatches(source.getPoints());
-//
-//	// Visualize the correspondences with lines.
-//	SimpleMesh resultingMesh = SimpleMesh::joinMeshes(sourceMesh, targetMesh, Matrix4f::Identity());
-//	auto sourcePoints = source.getPoints();
-//	auto targetPoints = target.getPoints();
-//
-//	for (unsigned i = 0; i < 100; ++i) { // sourcePoints.size()
-//		const auto match = matches[i];
-//		if (match.idx >= 0) {
-//			const auto& sourcePoint = sourcePoints[i];
-//			const auto& targetPoint = targetPoints[match.idx];
-//			resultingMesh = SimpleMesh::joinMeshes(SimpleMesh::cylinder(sourcePoint, targetPoint, 0.002f, 2, 15), resultingMesh, Matrix4f::Identity());
-//		}
-//	}
-//
-//	resultingMesh.writeMesh(std::string("../output/correspondences.off"));
-//}
-
+#define USE_GPU_ICP	1
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -74,15 +25,24 @@ int reconstructRoom() {
 	// sensor.processNextFrame();
 
     // Setup the ICP optimizer.
-    ICPOptimizer* optimizer = new LinearICPOptimizer();
+    ICPOptimizer* optimizer;
+
+	if (USE_GPU_ICP)  {
+	    optimizer = new LinearICPCudaOptimizer();
+	}
+	else {
+        std::cout << "Using CPU ICP" << std::endl;
+	    optimizer = new LinearICPOptimizer();
+	}
+
     optimizer->setMatchingMaxDistance(0.1f);
     optimizer->setMatchingMaxAngle(1.0472f);
     optimizer->usePointToPlaneConstraints(true);
-    optimizer->setNbOfIterations(20);
+    optimizer->setNbOfIterations(10);
 
-    const Matrix3f& depthIntrinsics = sensor.getDepthIntrinsics();
+    Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
     // As we dont know the extrinsics, so setting to identity ????????
-    Matrix4f depthExtrinsics = Matrix4f::Identity(); // sensor.getDepthExtrinsics();
+    //  Matrix4f depthExtrinsics = Matrix4f::Identity(); // sensor.getDepthExtrinsics();
     const unsigned depthFrameWidth = sensor.getDepthImageWidth();
     const unsigned depthFrameHeight = sensor.getDepthImageHeight();
 
@@ -97,7 +57,7 @@ int reconstructRoom() {
 	Matrix4f currentCameraToWorld = Matrix4f::Identity();
 	estimatedPoses.push_back(currentCameraToWorld.inverse());
 
-    Matrix4f globalCameraPose = Matrix4f::Identity();
+    // Matrix4f globalCameraPose = Matrix4f::Identity();
 
     size_t N = depthFrameWidth * depthFrameHeight;
 
@@ -110,13 +70,18 @@ int reconstructRoom() {
     currentFrame.width =  depthFrameWidth;
     currentFrame.height = depthFrameHeight;
 
-    CUDA_CALL(cudaMallocManaged((void **) &previousFrame.depthMap, N * sizeof(float)));
-    CUDA_CALL(cudaMallocManaged((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
-    CUDA_CALL(cudaMallocManaged((void **) &previousFrame.g_normals, N * sizeof(Vector3f)));
+    CUDA_CALL(cudaMalloc((void **) &previousFrame.depthMap, N * sizeof(float)));
+    CUDA_CALL(cudaMalloc((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
+    CUDA_CALL(cudaMalloc((void **) &previousFrame.g_normals, N * sizeof(Vector3f)));
+    CUDA_CALL(cudaMalloc((void **) &previousFrame.globalCameraPose, sizeof(Matrix4f)));
 
-    CUDA_CALL(cudaMallocManaged((void **) &currentFrame.depthMap, N * sizeof(float)));
-    CUDA_CALL(cudaMallocManaged((void **) &currentFrame.g_vertices, N * sizeof(Vector3f)));
-    CUDA_CALL(cudaMallocManaged((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
+    CUDA_CALL(cudaMalloc((void **) &currentFrame.depthMap, N * sizeof(float)));
+    CUDA_CALL(cudaMalloc((void **) &currentFrame.g_vertices, N * sizeof(Vector3f)));
+    CUDA_CALL(cudaMalloc((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
+    CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
+
+    CUDA_CALL(cudaMemcpy(previousFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+    CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
 	int i = 0;
 	const int iMax = 2;
@@ -126,7 +91,7 @@ int reconstructRoom() {
 
         CUDA_CALL(cudaMemcpy(currentFrame.depthMap, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
-        std::cout << "Step 1" << std::endl;
+        // std::cout << "Step 1" << std::endl;
         // #### Step 1: Surface measurement
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
                                           currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
@@ -134,11 +99,6 @@ int reconstructRoom() {
 
 
         ///// Debugging code  start
-//        Vector3f *g_vertices_host;
-//        g_vertices_host = (Vector3f *) malloc(N * sizeof(Vector3f));
-//        std::cout << "step 6" << std::endl;
-//        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
-
         //// We write out the mesh to file for debugging.
 //        SimpleMesh currentSM{ currentFrame.g_vertices, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
 //        std::stringstream ss1;
@@ -147,15 +107,17 @@ int reconstructRoom() {
 //            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
 //            return -1;
 //        }
-
-//        free(g_vertices_host);
-
         ///// Debugging code  end
 
 		// #### Step 2: Pose Estimation (Using Linearized ICP)
 		// Don't do ICP on 1st  frame
 		if (i > 0) {
-            currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+            if (USE_GPU_ICP)  {
+                currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+            }
+            else {
+                currentCameraToWorld = optimizer->estimatePose(depthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+            }
 		}
 
 		// Step 3:  Volumetric Grid Fusion
@@ -169,17 +131,13 @@ int reconstructRoom() {
 		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
 		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
 		estimatedPoses.push_back(currentCameraPose);
-//
+
+        std::cout << "GT camera pose: " << std::endl << sensor.getTrajectory() << std::endl;
+
 //		// update global rotation+translation
-        // globalCameraPose = currentCameraPose * globalCameraPose;
-//        depthExtrinsics = currentCameraToWorld * depthExtrinsics;
+//		*currentFrame.globalCameraPose = currentCameraPose * *previousFrame.globalCameraPose;
 
 		// Update previous frame data
-
-        if (currentFrame.globalCameraPose != NULL) {
-            // CUDA_CALL(cudaFree(currentFrame.globalCameraPose));
-        }
-
         // @TODO: check if updating with correct global camera pose
 //        CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
 //        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
@@ -190,7 +148,7 @@ int reconstructRoom() {
         currentFrame = tmpFrame;
 
 		// if (i % 5 == 0) {
-		if (1) {
+		if (i>0) {
             // We write out the mesh to file for debugging.
             SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
             SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
@@ -213,10 +171,12 @@ int reconstructRoom() {
     CUDA_CALL(cudaFree(previousFrame.depthMap));
     CUDA_CALL(cudaFree(previousFrame.g_vertices));
     CUDA_CALL(cudaFree(previousFrame.g_normals));
+    CUDA_CALL(cudaFree(previousFrame.globalCameraPose));
 
     CUDA_CALL(cudaFree(currentFrame.depthMap));
     CUDA_CALL(cudaFree(currentFrame.g_vertices));
     CUDA_CALL(cudaFree(currentFrame.g_normals));
+    CUDA_CALL(cudaFree(currentFrame.globalCameraPose));
 
 	return 0;
 }
