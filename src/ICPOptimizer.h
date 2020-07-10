@@ -161,27 +161,6 @@ protected:
 
         return transformedNormals;
     }
-
-//    void pruneCorrespondences(const std::vector<Vector3f>& sourceNormals, const std::vector<Vector3f>& targetNormals, std::vector<Match>& matches) {
-//        const unsigned nPoints = sourceNormals.size();
-//
-//        for (unsigned i = 0; i < nPoints; i++) {
-//            Match& match = matches[i];
-//            if (match.idx >= 0) {
-//                const auto& sourceNormal = sourceNormals[i];
-//                const auto& targetNormal = targetNormals[match.idx];
-//
-//                // TODO: Invalidate the match (set it to -1) if the angle between the normals is greater than 60
-//                float angle = (sourceNormal.dot(targetNormal)) / (sourceNormal.norm() * targetNormal.norm());
-//                angle = acos(angle);
-//                //// 60 degrees = 1.0472 radians
-//                if (angle > 1.0472) {
-//                    match.idx = -1;
-//                    matches[i].weight = 0;
-//                }
-//            }
-//        }
-//    }
 };
 
 /**

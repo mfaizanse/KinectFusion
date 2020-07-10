@@ -1,36 +1,11 @@
 #pragma once
 
-// The Google logging library (GLOG), used in Ceres, has a conflict with Windows defined constants. This definitions prevents GLOG to use the same constants
-#define GLOG_NO_ABBREVIATED_SEVERITIES
-
-//#include <ceres/ceres.h>
-//#include <ceres/rotation.h>
-//#include <flann/flann.hpp>
-
 #include "SimpleMesh.h"
-//#include "NearestNeighbor.h"
 #include "PointCloud.h"
 #include "ProcrustesAligner.h"
-
-
-struct FrameData {
-    float* depthMap;
-    Vector3f *g_vertices;
-    Vector3f *g_normals;
-    size_t width;
-    size_t height;
-    Matrix4f* globalCameraPose;
-};
-
-///**
-// * Helper methods for writing Ceres cost functions.
-// */
-//template <typename T>
-//static inline void fillVector(const Vector3f& input, T* output) {
-//    output[0] = T(input[0]);
-//    output[1] = T(input[1]);
-//    output[2] = T(input[2]);
-//}
+#include "Utils.h"
+#include "CudaICPOptimizer.h"
+#include "ICPOptimizer.h"
 
 __global__ void getCorrespondences(
         float *currentDepthMap,
@@ -96,102 +71,12 @@ __global__ void getCorrespondences(
 }
 
 /**
- * ICP optimizer - Abstract Base Class, using Ceres for optimization.
- */
-class ICPOptimizer {
-public:
-    ICPOptimizer() :
-            m_bUsePointToPlaneConstraints{ false },
-            m_nIterations{ 20 },
-            distanceThreshold{ 0.1f },
-            angleThreshold{ 1.0472f }
-            //m_nearestNeighborSearch{ std::make_unique<NearestNeighborSearchFlann>() }
-    { }
-
-    void setMatchingMaxDistance(float maxDistance) {
-        distanceThreshold = maxDistance;
-        //m_nearestNeighborSearch->setMatchingMaxDistance(maxDistance);
-    }
-
-    void setMatchingMaxAngle(float maxAngle) {
-        angleThreshold = maxAngle;
-    }
-
-    void usePointToPlaneConstraints(bool bUsePointToPlaneConstraints) {
-        m_bUsePointToPlaneConstraints = bUsePointToPlaneConstraints;
-    }
-
-    void setNbOfIterations(unsigned nIterations) {
-        m_nIterations = nIterations;
-    }
-
-    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) = 0;
-
-    virtual ~ICPOptimizer() {}
-
-protected:
-    bool m_bUsePointToPlaneConstraints;
-    unsigned m_nIterations;
-    float distanceThreshold;
-    float angleThreshold;
-    //std::unique_ptr<NearestNeighborSearch> m_nearestNeighborSearch;
-
-    std::vector<Vector3f> transformPoints(const std::vector<Vector3f>& sourcePoints, const Matrix4f& pose) {
-        std::vector<Vector3f> transformedPoints;
-        transformedPoints.reserve(sourcePoints.size());
-
-        const auto rotation = pose.block(0, 0, 3, 3);
-        const auto translation = pose.block(0, 3, 3, 1);
-
-        for (const auto& point : sourcePoints) {
-            transformedPoints.push_back(rotation * point + translation);
-        }
-
-        return transformedPoints;
-    }
-
-    std::vector<Vector3f> transformNormals(const std::vector<Vector3f>& sourceNormals, const Matrix4f& pose) {
-        std::vector<Vector3f> transformedNormals;
-        transformedNormals.reserve(sourceNormals.size());
-
-        const auto rotation = pose.block(0, 0, 3, 3);
-
-        for (const auto& normal : sourceNormals) {
-            transformedNormals.push_back(rotation.inverse().transpose() * normal);
-        }
-
-        return transformedNormals;
-    }
-
-//    void pruneCorrespondences(const std::vector<Vector3f>& sourceNormals, const std::vector<Vector3f>& targetNormals, std::vector<Match>& matches) {
-//        const unsigned nPoints = sourceNormals.size();
-//
-//        for (unsigned i = 0; i < nPoints; i++) {
-//            Match& match = matches[i];
-//            if (match.idx >= 0) {
-//                const auto& sourceNormal = sourceNormals[i];
-//                const auto& targetNormal = targetNormals[match.idx];
-//
-//                // TODO: Invalidate the match (set it to -1) if the angle between the normals is greater than 60
-//                float angle = (sourceNormal.dot(targetNormal)) / (sourceNormal.norm() * targetNormal.norm());
-//                angle = acos(angle);
-//                //// 60 degrees = 1.0472 radians
-//                if (angle > 1.0472) {
-//                    match.idx = -1;
-//                    matches[i].weight = 0;
-//                }
-//            }
-//        }
-//    }
-};
-
-/**
  * ICP optimizer - using linear least-squares for optimization.
  */
-class LinearICPOptimizer : public ICPOptimizer {
+class LinearICPCudaOptimizer : public ICPOptimizer {
 public:
-    LinearICPOptimizer() {}
-    ~LinearICPOptimizer() {}
+    LinearICPCudaOptimizer() {}
+    ~LinearICPCudaOptimizer() {}
 
     virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) override {
 

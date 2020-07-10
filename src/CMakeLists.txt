@@ -50,12 +50,6 @@ if (MSVC)
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /bigobj")
 endif()
 
-#message(STATUS "ceres library name: ${Ceres_LIBRARIES}")
-#message(STATUS "path to ceres cmake information: ${Ceres_DIR}")
-#message(STATUS "path to ceres include directory: ${Ceres_INCLUDE_DIR}")
-#message(STATUS "glog library name: ${glog_LIBRARIES}")
-#message(STATUS "path to glog include directory = ${glog_INCLUDE_DIR}")
-#message(STATUS "path to flann include directory = ${Flann_INCLUDE_DIR}")
 message(STATUS "path to eigen3 include directory = ${Eigen3_INCLUDE_DIR}")
 
 # Set files to be compiled
@@ -69,20 +63,16 @@ set(HEADER_FILES
     CudaError.h
     Macros.h
     SurfaceMeasurement.h
+    ICPOptimizer.h
     CudaICPOptimizer.h)
 set(SOURCE_FILES
         FreeImageHelper.cpp
 )
 
 link_directories(${FreeImage_LIBRARY_DIR})
-#link_directories(${Lz4_LIBRARY_DIR})
-#link_directories(${Flann_LIBRARY_DIR})
 add_executable(kinect_fusion main.cu ${HEADER_FILES} ${SOURCE_FILES})
 #target_link_libraries (kinect_fusion Eigen3::Eigen)
-#target_link_libraries(kinect_fusion ceres glog::glog freeimage)
 target_link_libraries(kinect_fusion freeimage)
-#target_link_libraries(kinect_fusion lz4)
-#target_link_libraries(kinect_fusion flann flann_cpp lz4)
 target_include_directories(kinect_fusion PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${FreeImage_INCLUDE_DIR})
 
 set_target_properties(

@@ -130,7 +130,7 @@ public:
             for (unsigned int u = 0; u < width; ++u) {
                 unsigned int idx = v*width + u; // linearized index
 
-                if (g_vertices[idx].x() == -INFINITY) {
+                if (g_vertices[idx].x() == -MINF) {
                     m_vertices[idx].position = Vector4f(MINF, MINF, MINF, MINF);
                     m_vertices[idx].color = Vector4uc(0, 0, 0, 0);
                 }

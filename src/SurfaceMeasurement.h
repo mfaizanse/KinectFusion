@@ -187,11 +187,6 @@ public:
 
         // Wait for GPU to finish before accessing on host
         cudaDeviceSynchronize();
-
-//        printf("a \n");
-//        printf("%f \n", g_vertices[0].x());
-//        printf("b \n");
-
     }
 
     /*

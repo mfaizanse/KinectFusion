@@ -92,12 +92,12 @@ int reconstructRoom() {
 
     SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
 
-    Matrix4f globalCameraPose = Matrix4f::Identity();
-
 	// We store the estimated camera poses.
 	std::vector<Matrix4f> estimatedPoses;
 	Matrix4f currentCameraToWorld = Matrix4f::Identity();
 	estimatedPoses.push_back(currentCameraToWorld.inverse());
+
+    Matrix4f globalCameraPose = Matrix4f::Identity();
 
     size_t N = depthFrameWidth * depthFrameHeight;
 
@@ -140,13 +140,13 @@ int reconstructRoom() {
 //        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
 
         //// We write out the mesh to file for debugging.
-        SimpleMesh currentSM{ currentFrame.g_vertices, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
-        std::stringstream ss1;
-        ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
-        if (!currentSM.writeMesh(ss1.str())) {
-            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-            return -1;
-        }
+//        SimpleMesh currentSM{ currentFrame.g_vertices, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
+//        std::stringstream ss1;
+//        ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
+//        if (!currentSM.writeMesh(ss1.str())) {
+//            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+//            return -1;
+//        }
 
 //        free(g_vertices_host);
 
@@ -154,9 +154,9 @@ int reconstructRoom() {
 
 		// #### Step 2: Pose Estimation (Using Linearized ICP)
 		// Don't do ICP on 1st  frame
-//		if (i > 0) {
-//            currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, currentCameraToWorld);
-//		}
+		if (i > 0) {
+            currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+		}
 
 		// Step 3:  Volumetric Grid Fusion
 
@@ -166,12 +166,12 @@ int reconstructRoom() {
 
 
 		// Invert the transformation matrix to get the current camera pose.
-//		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
-//		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
-//		estimatedPoses.push_back(currentCameraPose);
+		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
+		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
+		estimatedPoses.push_back(currentCameraPose);
 //
 //		// update global rotation+translation
-//        globalCameraPose = currentCameraPose * globalCameraPose;
+        // globalCameraPose = currentCameraPose * globalCameraPose;
 //        depthExtrinsics = currentCameraToWorld * depthExtrinsics;
 
 		// Update previous frame data
@@ -183,24 +183,26 @@ int reconstructRoom() {
         // @TODO: check if updating with correct global camera pose
 //        CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
 //        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
-//
-//        // @TODO:  transform  all  points  and normals to     new  camera   pose
-//        previousFrame = currentFrame;
+
+        // @Transform  all  points  and normals to     new  camera   pose
+        FrameData tmpFrame = previousFrame;
+        previousFrame = currentFrame;
+        currentFrame = tmpFrame;
 
 		// if (i % 5 == 0) {
-//		if (1) {
-//            // We write out the mesh to file for debugging.
-//            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
-//            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-//            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
-//
-//            std::stringstream ss;
-//            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
-//            if (!resultingMesh.writeMesh(ss.str())) {
-//                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-//                return -1;
-//            }
-//		}
+		if (1) {
+            // We write out the mesh to file for debugging.
+            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
+            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
+            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
+
+            std::stringstream ss;
+            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
+            if (!resultingMesh.writeMesh(ss.str())) {
+                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+                return -1;
+            }
+		}
 
 		i++;
 	}
