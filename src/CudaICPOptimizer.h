@@ -191,7 +191,7 @@ public:
 
             estimatedPose = estimatedPose2 * estimatedPose;
 
-            std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
+            // std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
 
             std::cout << "Optimization iteration done." << std::endl;
         }

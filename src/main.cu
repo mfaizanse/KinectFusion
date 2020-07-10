@@ -57,8 +57,6 @@ int reconstructRoom() {
 	Matrix4f currentCameraToWorld = Matrix4f::Identity();
 	estimatedPoses.push_back(currentCameraToWorld.inverse());
 
-    // Matrix4f globalCameraPose = Matrix4f::Identity();
-
     size_t N = depthFrameWidth * depthFrameHeight;
 
     FrameData previousFrame;
@@ -82,6 +80,9 @@ int reconstructRoom() {
 
     CUDA_CALL(cudaMemcpy(previousFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
+    Matrix4f *tmp4fMat_cpu;
+    tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
 	int i = 0;
 	const int iMax = 2;
@@ -124,9 +125,7 @@ int reconstructRoom() {
 
 		// Step 4: Ray-Casting
 
-		// Step 5: Update data (e.g. Poses, depth frame etc.) for next frame
-
-
+		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.
 		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
 		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
@@ -134,15 +133,15 @@ int reconstructRoom() {
 
         std::cout << "GT camera pose: " << std::endl << sensor.getTrajectory() << std::endl;
 
-//		// update global rotation+translation
-//		*currentFrame.globalCameraPose = currentCameraPose * *previousFrame.globalCameraPose;
+		// update global rotation+translation
+        CUDA_CALL(cudaMemcpy(tmp4fMat_cpu, previousFrame.globalCameraPose->data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
+		*tmp4fMat_cpu = currentCameraPose * *tmp4fMat_cpu;
+        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, (*tmp4fMat_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
+        // @TODO: Transform  all  points  and normals to     new  camera   pose
+
+        // Step 6: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data
-        // @TODO: check if updating with correct global camera pose
-//        CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
-//        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
-
-        // @Transform  all  points  and normals to     new  camera   pose
         FrameData tmpFrame = previousFrame;
         previousFrame = currentFrame;
         currentFrame = tmpFrame;
@@ -177,6 +176,8 @@ int reconstructRoom() {
     CUDA_CALL(cudaFree(currentFrame.g_vertices));
     CUDA_CALL(cudaFree(currentFrame.g_normals));
     CUDA_CALL(cudaFree(currentFrame.globalCameraPose));
+
+    free(tmp4fMat_cpu);
 
 	return 0;
 }
