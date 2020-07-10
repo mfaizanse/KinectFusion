@@ -40,25 +40,28 @@ int reconstructRoom() {
     optimizer->usePointToPlaneConstraints(true);
     optimizer->setNbOfIterations(10);
 
-    Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
-    // As we dont know the extrinsics, so setting to identity ????????
-    //  Matrix4f depthExtrinsics = Matrix4f::Identity(); // sensor.getDepthExtrinsics();
     const unsigned depthFrameWidth = sensor.getDepthImageWidth();
     const unsigned depthFrameHeight = sensor.getDepthImageHeight();
+    const size_t N = depthFrameWidth * depthFrameHeight;
 
+    // Intrinsics on host memory
+    Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
+
+    // Intrinsics on device memory
     Matrix3f *cudaDepthIntrinsics;
     CUDA_CALL(cudaMalloc((void **) &cudaDepthIntrinsics, sizeof(Matrix3f)));
     CUDA_CALL(cudaMemcpy(cudaDepthIntrinsics, depthIntrinsics.data(), sizeof(Matrix3f), cudaMemcpyHostToDevice));
 
-    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
 
-	// We store the estimated camera poses.
+	// We store the estimated camera poses. [on Host memory]
 	std::vector<Matrix4f> estimatedPoses;
 	Matrix4f currentCameraToWorld = Matrix4f::Identity();
 	estimatedPoses.push_back(currentCameraToWorld.inverse());
 
-    size_t N = depthFrameWidth * depthFrameHeight;
+	// SurfaceMeasurement object for step 1
+    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
 
+    // Defining memory for previous and current frames,  [on Device memory]
     FrameData previousFrame;
     FrameData currentFrame;
 
@@ -90,10 +93,11 @@ int reconstructRoom() {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
 
+		// Copy depth map to current frame, device memory
         CUDA_CALL(cudaMemcpy(currentFrame.depthMap, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
-        // std::cout << "Step 1" << std::endl;
         // #### Step 1: Surface measurement
+        // It expects the pointers for device memory
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
                                           currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
@@ -101,6 +105,11 @@ int reconstructRoom() {
 
         ///// Debugging code  start
         //// We write out the mesh to file for debugging.
+//        Vector3f *g_vertices_host;
+//        g_vertices_host = (Vector3f *) malloc(N * sizeof(Vector3f));
+//        std::cout << "step 6" << std::endl;
+//        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
+
 //        SimpleMesh currentSM{ currentFrame.g_vertices, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
 //        std::stringstream ss1;
 //        ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
@@ -108,12 +117,15 @@ int reconstructRoom() {
 //            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
 //            return -1;
 //        }
+//        free(g_vertices_host);
         ///// Debugging code  end
 
 		// #### Step 2: Pose Estimation (Using Linearized ICP)
 		// Don't do ICP on 1st  frame
 		if (i > 0) {
             if (USE_GPU_ICP)  {
+                // The arguments should be on device memory,expect the initialPose.
+                // The returned pose matrix will be on host memory
                 currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
             }
             else {
@@ -126,21 +138,23 @@ int reconstructRoom() {
 		// Step 4: Ray-Casting
 
 		// Step 5: Update trajectory poses and transform  current points
-		// Invert the transformation matrix to get the current camera pose.
+		// Invert the transformation matrix to get the current camera pose.  [Host memory]
 		Matrix4f currentCameraPose = currentCameraToWorld.inverse();
 		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
 		estimatedPoses.push_back(currentCameraPose);
 
         std::cout << "GT camera pose: " << std::endl << sensor.getTrajectory() << std::endl;
 
-		// update global rotation+translation
+		// Update global rotation+translation
+		// Copy from device memory to host memory, then update.
         CUDA_CALL(cudaMemcpy(tmp4fMat_cpu, previousFrame.globalCameraPose->data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
 		*tmp4fMat_cpu = currentCameraPose * *tmp4fMat_cpu;
         CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, (*tmp4fMat_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
-        // @TODO: Transform  all  points  and normals to     new  camera   pose
+        // @TODO: Step 6: Transform all points and normals to new  camera pose
+        // IMPORTANT STEP  MISSING
 
-        // Step 6: Update data (e.g. Poses, depth frame etc.) for next frame
+        // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data
         FrameData tmpFrame = previousFrame;
         previousFrame = currentFrame;
@@ -164,7 +178,7 @@ int reconstructRoom() {
 		i++;
 	}
 
-	delete optimizer;
+	// Free all pointers
     CUDA_CALL(cudaFree(cudaDepthIntrinsics));
 
     CUDA_CALL(cudaFree(previousFrame.depthMap));
@@ -178,6 +192,8 @@ int reconstructRoom() {
     CUDA_CALL(cudaFree(currentFrame.globalCameraPose));
 
     free(tmp4fMat_cpu);
+
+    delete optimizer;
 
 	return 0;
 }
