@@ -8,6 +8,21 @@
 #include "CudaICPOptimizer.h"
 #include "BilateralFilter.h"
 
+struct DepthMipMap {
+    float *depthMap;
+    size_t width;
+    size_t height;
+};
+
+struct VertexMipMap {
+    Vector3f *vertices;
+    Vector3f *normals;
+    size_t width;
+    size_t height;
+};
+
+#include "MipMap.h"
+
 #define USE_GPU_ICP	1
 
 int reconstructRoom() {
@@ -67,6 +82,16 @@ int reconstructRoom() {
     FrameData currentFrame;
 
     float *unfilteredDepth;
+#ifdef ENABLE_MIP_MAP
+    float *l2_map;
+    float *l3_map;
+
+    Vector3f *l2_v_map;
+    Vector3f *l3_v_map;
+
+    Vector3f *l2_n_map;
+    Vector3f *l3_n_map;
+#endif
 
     previousFrame.width =  depthFrameWidth;
     previousFrame.height = depthFrameHeight;
@@ -86,6 +111,15 @@ int reconstructRoom() {
     CUDA_CALL(cudaMalloc((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
 
+#ifdef ENABLE_MIP_MAP
+    CUDA_CALL(cudaMalloc((void **) &l2_map, N * sizeof(float) / 4));
+    CUDA_CALL(cudaMalloc((void **) &l3_map, N * sizeof(float) / 16));
+    CUDA_CALL(cudaMalloc((void **) &l2_v_map, N * sizeof(Vector3f) / 4));
+    CUDA_CALL(cudaMalloc((void **) &l3_v_map, N * sizeof(Vector3f) / 16));
+    CUDA_CALL(cudaMalloc((void **) &l2_n_map, N * sizeof(Vector3f) / 4));
+    CUDA_CALL(cudaMalloc((void **) &l3_n_map, N * sizeof(Vector3f) / 16));
+#endif
+
     CUDA_CALL(cudaMemcpy(previousFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
@@ -96,6 +130,19 @@ int reconstructRoom() {
     Matrix4f *tmp4fMat_cpu;
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
+#ifdef ENABLE_MIP_MAP
+    std::vector<DepthMipMap> depthmipmaps;
+    depthmipmaps.push_back({currentFrame.depthMap, depthFrameWidth, depthFrameHeight});
+    depthmipmaps.push_back({l2_map,depthFrameWidth / 2, depthFrameHeight / 2});
+    depthmipmaps.push_back({l3_map, depthFrameWidth / 4, depthFrameHeight / 4});
+
+    std::vector<VertexMipMap> vertexmipmaps;
+    vertexmipmaps.push_back({currentFrame.g_vertices, currentFrame.g_normals, depthFrameWidth, depthFrameHeight});
+    vertexmipmaps.push_back({l2_v_map, l2_n_map, depthFrameWidth / 2, depthFrameHeight / 2});
+    vertexmipmaps.push_back({l3_v_map, l3_n_map, depthFrameWidth / 4, depthFrameHeight / 4});
+
+#endif
+
 	int i = 0;
 	const int iMax = 3;
 	while (sensor.processNextFrame() && i < iMax) {
@@ -105,14 +152,28 @@ int reconstructRoom() {
 		// Copy depth map to current frame, device memory
         CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
-        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N,0);
+        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
 
+#ifdef ENABLE_MIP_MAP
+
+        depthmipmaps[0].depthMap = currentFrame.depthMap;
+
+        MipMapGen::createDepthMipMap(currentFrame.depthMap, depthmipmaps, depthFrameWidth, depthFrameHeight);
+
+#endif
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
-                                          currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
+                                            currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
+#ifdef ENABLE_MIP_MAP
 
+        surfaceMeasurement.measureSurface(depthFrameWidth / 2,depthFrameHeight / 2,
+                                            vertexmipmaps[1].vertices, vertexmipmaps[1].normals, depthmipmaps[1].depthMap);
+
+        surfaceMeasurement.measureSurface(depthFrameWidth / 4,depthFrameHeight / 4,
+                                          vertexmipmaps[2].vertices, vertexmipmaps[2].normals, depthmipmaps[2].depthMap);
+#endif
 
         ///// Debugging code  start
         //// We write out the mesh to file for debugging.

@@ -75,7 +75,7 @@ __global__ void bilateralFilter(float *depthMap, float *filteredMap, float sigma
     }
 
     if(depthMap[idx] <= 0) {
-        filteredMap[idx] = -std::numeric_limits<float>::infinity();
+        filteredMap[idx] = depthMap[idx];
     } else {
         filteredMap[idx] = computeDk(depthMap,u,v,sigma_s,sigma_r,width,N);
     }
@@ -83,7 +83,7 @@ __global__ void bilateralFilter(float *depthMap, float *filteredMap, float sigma
 
 class BilateralFilter {
 public:
-    static void filterDepthmap(float *depthMap, float *filteredMap, size_t width, float sigma_s, float sigmna_r, size_t height, size_t N, cudaStream_t stream) {
+    static void filterDepthmap(float *depthMap, float *filteredMap, size_t width, float sigma_s, float sigmna_r, size_t height, size_t N, cudaStream_t stream = 0) {
         bilateralFilter<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(depthMap,filteredMap, sigma_s, sigmna_r, width,height,N);
     }
 };
