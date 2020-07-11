@@ -119,7 +119,7 @@ public:
         m_nIterations = nIterations;
     }
 
-    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) = 0;
+    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f& initialPose) = 0;
 
     virtual ~ICPOptimizer() {}
 
@@ -129,29 +129,29 @@ protected:
     float distanceThreshold;
     float angleThreshold;
 
-    std::vector<Vector3f> transformPoints(const std::vector<Vector3f>& sourcePoints, const Matrix4f& pose) {
+    std::vector<Vector3f> transformPoints(const Vector3f *currentVertices, const Matrix4f& pose) {
         std::vector<Vector3f> transformedPoints;
-        transformedPoints.reserve(sourcePoints.size());
-
-        const auto rotation = pose.block(0, 0, 3, 3);
-        const auto translation = pose.block(0, 3, 3, 1);
-
-        for (const auto& point : sourcePoints) {
-            transformedPoints.push_back(rotation * point + translation);
-        }
+//        transformedPoints.reserve(sourcePoints.size());
+//
+//        const auto rotation = pose.block(0, 0, 3, 3);
+//        const auto translation = pose.block(0, 3, 3, 1);
+//
+//        for (const auto& point : sourcePoints) {
+//            transformedPoints.push_back(rotation * point + translation);
+//        }
 
         return transformedPoints;
     }
 
-    std::vector<Vector3f> transformNormals(const std::vector<Vector3f>& sourceNormals, const Matrix4f& pose) {
+    std::vector<Vector3f> transformNormals(const Vector3f *currentNormals, const Matrix4f& pose) {
         std::vector<Vector3f> transformedNormals;
-        transformedNormals.reserve(sourceNormals.size());
-
-        const auto rotation = pose.block(0, 0, 3, 3);
-
-        for (const auto& normal : sourceNormals) {
-            transformedNormals.push_back(rotation.inverse().transpose() * normal);
-        }
+//        transformedNormals.reserve(sourceNormals.size());
+//
+//        const auto rotation = pose.block(0, 0, 3, 3);
+//
+//        for (const auto& normal : sourceNormals) {
+//            transformedNormals.push_back(rotation.inverse().transpose() * normal);
+//        }
 
         return transformedNormals;
     }
@@ -165,7 +165,7 @@ public:
     LinearICPOptimizer() {}
     ~LinearICPOptimizer() {}
 
-    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) override {
+    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f& initialPose) override {
 
         size_t N = currentFrame.width * currentFrame.height;
 
@@ -176,6 +176,10 @@ public:
             // Compute the matches.
             std::cout << "Matching points ... Iteration: " << i << std::endl;
             clock_t begin = clock();
+
+            // @TODO: Transform points and normals.  IMPORTANT
+//            auto transformedPoints = transformPoints(source.getPoints(), estimatedPose);
+//            auto transformedNormals = transformNormals(source.getNormals(), estimatedPose);
 
             // Build the system
             MatrixXf A = MatrixXf::Zero(N, 6);

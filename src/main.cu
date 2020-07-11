@@ -38,7 +38,7 @@ int reconstructRoom() {
     optimizer->setMatchingMaxDistance(0.1f);
     optimizer->setMatchingMaxAngle(1.0472f);
     optimizer->usePointToPlaneConstraints(true);
-    optimizer->setNbOfIterations(10);
+    optimizer->setNbOfIterations(20);
 
     const unsigned depthFrameWidth = sensor.getDepthImageWidth();
     const unsigned depthFrameHeight = sensor.getDepthImageHeight();
@@ -84,11 +84,15 @@ int reconstructRoom() {
     CUDA_CALL(cudaMemcpy(previousFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
+    Matrix4f *cuda4fIdentity;
+    CUDA_CALL(cudaMalloc((void **) &cuda4fIdentity, sizeof(Matrix4f)));
+    CUDA_CALL(cudaMemcpy(cuda4fIdentity, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
     Matrix4f *tmp4fMat_cpu;
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
 	int i = 0;
-	const int iMax = 2;
+	const int iMax = 3;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -124,12 +128,12 @@ int reconstructRoom() {
 		// Don't do ICP on 1st  frame
 		if (i > 0) {
             if (USE_GPU_ICP)  {
-                // The arguments should be on device memory,expect the initialPose.
+                // The arguments should be on device memory
                 // The returned pose matrix will be on host memory
-                currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+                currentCameraToWorld = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
             }
             else {
-                currentCameraToWorld = optimizer->estimatePose(depthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+                // currentCameraToWorld = optimizer->estimatePose(depthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
             }
 		}
 

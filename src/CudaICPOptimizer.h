@@ -99,6 +99,56 @@ __global__ void getCorrespondences(
     }
 }
 
+__global__ void transformVerticesAndNormas(
+        const Vector3f *vertices,
+        const Vector3f *normals,
+        const Matrix4f *pose,
+        const size_t width,
+        const size_t height,
+        const size_t N,
+        Vector3f *transformedVertices,
+        Vector3f *transformedNormals
+) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    //Terminate all un-necessary threads
+    if (idx >= N) {
+        return;
+    }
+
+    if (vertices[idx].x() != -MINF) {
+        // printf("a1\n");
+        auto vH = vertices[idx].homogeneous();
+        Vector4f r1 =  *pose * vH;
+
+        transformedVertices[idx].x() = r1.x();
+        transformedVertices[idx].y() = r1.y();
+        transformedVertices[idx].z() = r1.z();
+    }
+    else {
+        transformedVertices[idx].x() = -MINF;
+        transformedVertices[idx].y() = -MINF;
+        transformedVertices[idx].z() = -MINF;
+    }
+
+    if (normals[idx].x() != -MINF) {
+        // printf("a2\n");
+        Matrix3f rotation = (*pose).block(0, 0, 3, 3);
+        Matrix3f rt =  rotation.inverse();
+        rt = rt.transpose();
+        Vector3f n2 = rt * normals[idx];
+
+        transformedNormals[idx].x() = n2.x();
+        transformedNormals[idx].y() = n2.y();
+        transformedNormals[idx].z() = n2.z();
+    }
+    else {
+        transformedNormals[idx].x() = -MINF;
+        transformedNormals[idx].y() = -MINF;
+        transformedNormals[idx].z() = -MINF;
+    }
+}
+
 /**
  * ICP optimizer - using linear least-squares for optimization.
  */
@@ -107,11 +157,22 @@ public:
     LinearICPCudaOptimizer() {}
     ~LinearICPCudaOptimizer() {}
 
-    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f initialPose = Matrix4f::Identity()) override {
+    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f& initialPose) override {
 
         const size_t N = currentFrame.width * currentFrame.height;
         // The initial estimate can be given as an argument.
-        Matrix4f estimatedPose = initialPose;
+        Matrix4f *estimatedPose;
+        CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
+        CUDA_CALL(cudaMemcpy(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice));
+
+        Matrix4f *estimatedPose_cpu;
+        estimatedPose_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
+        CUDA_CALL(cudaMemcpy(estimatedPose_cpu, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
+
+        Vector3f *transformedVertices; // On device memory
+        Vector3f *transformedNormals;  // On device memory
+        CUDA_CALL(cudaMalloc((void **) &transformedVertices, N * sizeof(Vector3f)));
+        CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
 
         Matrix<float, N_FIXED, 6> *A;
         Matrix<float, N_FIXED, 1> *b;
@@ -135,11 +196,25 @@ public:
             std::cout << "Matching points ... Iteration: " << i << std::endl;
             clock_t begin = clock();
 
+            // @TODO: Transform points and normals.  IMPORTANT
+            transformVerticesAndNormas<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+                    currentFrame.g_vertices,
+                    currentFrame.g_normals,
+                    estimatedPose,
+                    currentFrame.width,
+                    currentFrame.height,
+                    N,
+                    transformedVertices,
+                    transformedNormals
+            );
+
+            CUDA_CHECK_ERROR
+
             getCorrespondences<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                     currentFrame.depthMap,
                     previousFrame.globalCameraPose,
-                    currentFrame.g_vertices,
-                    currentFrame.g_normals,
+                    transformedVertices,
+                    transformedNormals,
                     previousFrame.g_vertices,
                     previousFrame.g_normals,
                     &intrinsics,
@@ -189,7 +264,8 @@ public:
             estimatedPose2.block(0, 0, 3, 3) = rotation;
             estimatedPose2.block(0, 3, 3, 1) = translation;
 
-            estimatedPose = estimatedPose2 * estimatedPose;
+            *estimatedPose_cpu = estimatedPose2 * *estimatedPose_cpu;
+            CUDA_CALL(cudaMemcpy(estimatedPose, (*estimatedPose_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
             // std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
 
@@ -198,11 +274,12 @@ public:
 
         CUDA_CALL(cudaFree(A));
         CUDA_CALL(cudaFree(b));
+        CUDA_CALL(cudaFree(estimatedPose));
 
         free(A_cpu);
         free(b_cpu);
-
-        return estimatedPose;
+        // @TODO: See how can we free this pointer??  do  we need to?
+        return *estimatedPose_cpu;
     }
 
 private:
