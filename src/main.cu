@@ -6,6 +6,7 @@
 #include "SimpleMesh.h"
 #include "SurfaceMeasurement.h"
 #include "CudaICPOptimizer.h"
+#include "BilateralFilter.h"
 
 #define USE_GPU_ICP	1
 
@@ -65,11 +66,15 @@ int reconstructRoom() {
     FrameData previousFrame;
     FrameData currentFrame;
 
+    float *unfilteredDepth;
+
     previousFrame.width =  depthFrameWidth;
     previousFrame.height = depthFrameHeight;
 
     currentFrame.width =  depthFrameWidth;
     currentFrame.height = depthFrameHeight;
+
+    CUDA_CALL(cudaMalloc((void **) &unfilteredDepth, N * sizeof(float)));
 
     CUDA_CALL(cudaMalloc((void **) &previousFrame.depthMap, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
@@ -98,7 +103,9 @@ int reconstructRoom() {
 		float* depthMap = sensor.getDepth();
 
 		// Copy depth map to current frame, device memory
-        CUDA_CALL(cudaMemcpy(currentFrame.depthMap, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
+
+        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N,0);
 
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
