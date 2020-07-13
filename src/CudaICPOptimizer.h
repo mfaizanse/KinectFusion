@@ -480,7 +480,7 @@ public:
         //Free temp memory
         CUDA_CALL(cudaFree(ata));
         CUDA_CALL(cudaFree(atb));
-        CUDA_CALL(cudaFree(estimatePose()));
+        CUDA_CALL(cudaFree(estimatedPose));
         CUDA_CALL(cudaFree(transformedVertices));
         CUDA_CALL(cudaFree(transformedNormals));
         CUDA_CALL(cudaFree(d_temp_storage_ata));
