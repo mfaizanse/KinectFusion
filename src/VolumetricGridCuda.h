@@ -1,10 +1,8 @@
 #pragma once
 
-#include <iostream>
+#include "Utils.h"
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include "Macros.h"
-#include "Utils.h"
 
 #define N_FIXED 640*480
 
@@ -136,9 +134,12 @@ public:
 
         intrinsics = intrinsics_gpu;
 
-        Matrix4f base_pose_inv_tmp = base_pose->inverse();
+        Matrix4f base_pose_inv_tmp = base_pose_CPU->inverse();
 
-        CUDA_CALL(cudaMemcpy(base_pose, base_pose_CPU->data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+        CUDA_CALL(cudaMalloc((void **) &base_pose, sizeof(Matrix4f)));
+        CUDA_CALL(cudaMalloc((void **) &base_pose_inv, sizeof(Matrix4f)));
+
+        CUDA_CALL(cudaMemcpy(base_pose, (*base_pose_CPU).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
         CUDA_CALL(cudaMemcpy(base_pose_inv, base_pose_inv_tmp.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
 
@@ -149,20 +150,21 @@ public:
         CUDA_CALL(cudaFree(voxel_grid_weight_GPU));
         CUDA_CALL(cudaFree(base_pose));
         CUDA_CALL(cudaFree(base_pose_inv));
-        CUDA_CALL(cudaFree(intrinsics));
 
         free(voxel_grid_TSDF);
         free(voxel_grid_weight);
     }
 
-    void integrateFrame(Matrix4f* current_pose_gpu, const FrameData& currentFrame) {
+    void integrateFrame(Matrix4f* current_pose, const FrameData& currentFrame) {
         std::cout << "Fusing into Volumetric Grid... " << std::endl;
         clock_t begin = clock();
 
-        // currentFrame.depthMap  is already in GPU
+        Matrix4f* current_pose_gpu;
+        CUDA_CALL(cudaMalloc((void **) &current_pose_gpu, sizeof(Matrix4f)));
 
-        // Compute current frame camera pose relative to the base frame and store it in cam2base
-//        multiply_matrix(base_pose_inv, current_pose, cam2base);
+        CUDA_CALL(cudaMemcpy(current_pose_gpu, (*current_pose).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
+        // currentFrame.depthMap  is already in GPU
 
         // call integrate to to the integration in CUDA
         Integrate <<< voxel_grid_dim_z, voxel_grid_dim_y >>>(
@@ -182,9 +184,61 @@ public:
         // Wait for GPU to finish before accessing on host
         cudaDeviceSynchronize();
 
+        CUDA_CALL(cudaFree(current_pose_gpu));
+
         clock_t end = clock();
         double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
         std::cout << "Fusing Completed in " << elapsedSecs << " seconds." << std::endl;
+    }
+
+    // Compute surface points from TSDF voxel grid and save points to point cloud file
+    void SaveVoxelGrid2SurfacePointCloud(const std::string &file_name, float tsdf_thresh, float weight_thresh) {
+
+        // Compute surface points from TSDF voxel grid and save to point cloud .ply file
+        std::cout << "Saving surface point cloud (tsdf.ply)..." << std::endl;
+
+        // Count total number of points in point cloud
+        int num_pts = 0;
+        for (int i = 0; i < voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z; i++)
+            if (std::abs(voxel_grid_TSDF[i]) < tsdf_thresh && voxel_grid_weight[i] > weight_thresh)
+                num_pts++;
+
+        // Create header for .ply file
+        FILE *fp = fopen(file_name.c_str(), "w");
+        fprintf(fp, "ply\n");
+        fprintf(fp, "format binary_little_endian 1.0\n");
+        fprintf(fp, "element vertex %d\n", num_pts);
+        fprintf(fp, "property float x\n");
+        fprintf(fp, "property float y\n");
+        fprintf(fp, "property float z\n");
+        fprintf(fp, "end_header\n");
+
+        // Create point cloud content for ply file
+        for (int i = 0; i < voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z; i++) {
+            // If TSDF value of voxel is less than some threshold, add voxel coordinates to point cloud
+            if (std::abs(voxel_grid_TSDF[i]) < tsdf_thresh && voxel_grid_weight[i] > weight_thresh) {
+
+                // Compute voxel indices in int for higher positive number range
+                int z = floor(i / (voxel_grid_dim_x * voxel_grid_dim_y));
+                int y = floor((i - (z * voxel_grid_dim_x * voxel_grid_dim_y)) / voxel_grid_dim_x);
+                int x = i - (z * voxel_grid_dim_x * voxel_grid_dim_y) - (y * voxel_grid_dim_x);
+
+                // Convert voxel indices to float, and save coordinates to ply file
+                float pt_base_x = voxel_grid_origin_x + (float) x * voxel_size;
+                float pt_base_y = voxel_grid_origin_y + (float) y * voxel_size;
+                float pt_base_z = voxel_grid_origin_z + (float) z * voxel_size;
+                fwrite(&pt_base_x, sizeof(float), 1, fp);
+                fwrite(&pt_base_y, sizeof(float), 1, fp);
+                fwrite(&pt_base_z, sizeof(float), 1, fp);
+            }
+        }
+        fclose(fp);
+    }
+
+    void copyVGFromDeviceToHost() {
+        // Load TSDF voxel grid weights and distances from device back to host
+        CUDA_CALL(cudaMemcpy(voxel_grid_TSDF, voxel_grid_TSDF_GPU, voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CALL(cudaMemcpy(voxel_grid_weight, voxel_grid_weight_GPU, voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z * sizeof(float), cudaMemcpyDeviceToHost));
     }
 
 private:
