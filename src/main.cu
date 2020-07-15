@@ -24,6 +24,7 @@ struct VertexMipMap {
 #include "MipMap.h"
 
 #define USE_GPU_ICP	1
+#define USE_REDUCTION_ICP 1
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -40,11 +41,19 @@ int reconstructRoom() {
 
 	// sensor.processNextFrame();
 
+    const unsigned depthFrameWidth = sensor.getDepthImageWidth();
+    const unsigned depthFrameHeight = sensor.getDepthImageHeight();
+    const size_t N = depthFrameWidth * depthFrameHeight;
+
     // Setup the ICP optimizer.
     ICPOptimizer* optimizer;
 
 	if (USE_GPU_ICP)  {
-	    optimizer = new LinearICPCudaOptimizer();
+	    if(USE_REDUCTION_ICP) {
+	        optimizer = new LinearICPCubOptimizer(depthFrameWidth,depthFrameHeight);
+	    } else {
+            optimizer = new LinearICPCudaOptimizer();
+	    }
 	}
 	else {
         std::cout << "Using CPU ICP" << std::endl;
@@ -56,9 +65,7 @@ int reconstructRoom() {
     optimizer->usePointToPlaneConstraints(true);
     optimizer->setNbOfIterations(20);
 
-    const unsigned depthFrameWidth = sensor.getDepthImageWidth();
-    const unsigned depthFrameHeight = sensor.getDepthImageHeight();
-    const size_t N = depthFrameWidth * depthFrameHeight;
+
 
     // Intrinsics on host memory
     Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
@@ -82,16 +89,6 @@ int reconstructRoom() {
     FrameData currentFrame;
 
     float *unfilteredDepth;
-#ifdef ENABLE_MIP_MAP
-    float *l2_map;
-    float *l3_map;
-
-    Vector3f *l2_v_map;
-    Vector3f *l3_v_map;
-
-    Vector3f *l2_n_map;
-    Vector3f *l3_n_map;
-#endif
 
     previousFrame.width =  depthFrameWidth;
     previousFrame.height = depthFrameHeight;
@@ -111,15 +108,6 @@ int reconstructRoom() {
     CUDA_CALL(cudaMalloc((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
 
-#ifdef ENABLE_MIP_MAP
-    CUDA_CALL(cudaMalloc((void **) &l2_map, N * sizeof(float) / 4));
-    CUDA_CALL(cudaMalloc((void **) &l3_map, N * sizeof(float) / 16));
-    CUDA_CALL(cudaMalloc((void **) &l2_v_map, N * sizeof(Vector3f) / 4));
-    CUDA_CALL(cudaMalloc((void **) &l3_v_map, N * sizeof(Vector3f) / 16));
-    CUDA_CALL(cudaMalloc((void **) &l2_n_map, N * sizeof(Vector3f) / 4));
-    CUDA_CALL(cudaMalloc((void **) &l3_n_map, N * sizeof(Vector3f) / 16));
-#endif
-
     CUDA_CALL(cudaMemcpy(previousFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
@@ -129,19 +117,6 @@ int reconstructRoom() {
 
     Matrix4f *tmp4fMat_cpu;
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
-
-#ifdef ENABLE_MIP_MAP
-    std::vector<DepthMipMap> depthmipmaps;
-    depthmipmaps.push_back({currentFrame.depthMap, depthFrameWidth, depthFrameHeight});
-    depthmipmaps.push_back({l2_map,depthFrameWidth / 2, depthFrameHeight / 2});
-    depthmipmaps.push_back({l3_map, depthFrameWidth / 4, depthFrameHeight / 4});
-
-    std::vector<VertexMipMap> vertexmipmaps;
-    vertexmipmaps.push_back({currentFrame.g_vertices, currentFrame.g_normals, depthFrameWidth, depthFrameHeight});
-    vertexmipmaps.push_back({l2_v_map, l2_n_map, depthFrameWidth / 2, depthFrameHeight / 2});
-    vertexmipmaps.push_back({l3_v_map, l3_n_map, depthFrameWidth / 4, depthFrameHeight / 4});
-
-#endif
 
 	int i = 0;
 	const int iMax = 3;
@@ -154,26 +129,11 @@ int reconstructRoom() {
 
         BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
 
-#ifdef ENABLE_MIP_MAP
-
-        depthmipmaps[0].depthMap = currentFrame.depthMap;
-
-        MipMapGen::createDepthMipMap(currentFrame.depthMap, depthmipmaps, depthFrameWidth, depthFrameHeight);
-
-#endif
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
                                             currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
-#ifdef ENABLE_MIP_MAP
-
-        surfaceMeasurement.measureSurface(depthFrameWidth / 2,depthFrameHeight / 2,
-                                            vertexmipmaps[1].vertices, vertexmipmaps[1].normals, depthmipmaps[1].depthMap);
-
-        surfaceMeasurement.measureSurface(depthFrameWidth / 4,depthFrameHeight / 4,
-                                          vertexmipmaps[2].vertices, vertexmipmaps[2].normals, depthmipmaps[2].depthMap);
-#endif
 
         ///// Debugging code  start
         //// We write out the mesh to file for debugging.

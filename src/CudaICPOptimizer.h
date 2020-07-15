@@ -370,16 +370,28 @@ __global__ void computeAtbs(const float *currentDepthMap,
     }
 }
 
+struct CustomAdd
+{
+    template <typename T>
+    __device__ __forceinline__
+    T operator()(const T &a, const T &b) const {
+        return b + a;
+    }
+};
+
 class LinearICPCubOptimizer : public ICPOptimizer {
 public:
-    LinearICPCubOptimizer(size_t width, size_t height, cudaStream_t stream) {
+    LinearICPCubOptimizer(size_t width, size_t height, cudaStream_t stream = 0) {
         const size_t N = width * height;
 
         this->stream = stream;
 
         //Allocate for temporary results, that get reduced
-        CUDA_CALL(cudaMalloc((void**) &ata, sizeof(Matrix<float,6,6>) * (N + 1)));
-        CUDA_CALL(cudaMalloc((void**) &atb, sizeof(Matrix<float,6,1>) * (N + 1)));
+        CUDA_CALL(cudaMalloc((void**) &ata, sizeof(Matrix<float,6,6>) * (N+1)));
+        CUDA_CALL(cudaMalloc((void**) &atb, sizeof(Matrix<float,6,1>) * (N+1)));
+
+        CUDA_CALL(cudaMalloc((void**) &ata_result, sizeof(Matrix<float,6,6>)));
+        CUDA_CALL(cudaMalloc((void**) &atb_result, sizeof(Matrix<float,6,1>)));
 
         CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
 
@@ -400,15 +412,12 @@ public:
 
         CUDA_CALL(cudaMemcpyAsync(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice, stream));
 
+        CUDA_CALL(cudaMemcpyAsync(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost, stream));
+
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
             std::cout << "Matching points ... Iteration: " << i << std::endl;
-            clock_t begin = clock();
 
-            CUDA_CALL(cudaMemsetAsync(ata,0,N * sizeof(Matrix<float,6,6>),stream));
-            CUDA_CALL(cudaMemsetAsync(atb,0,N * sizeof(Matrix<float,6,1>),stream));
-
-            // @TODO: Transform points and normals.  IMPORTANT
             transformVerticesAndNormas<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
@@ -441,17 +450,19 @@ public:
 
             CUDA_CHECK_ERROR
 
-            cub::DeviceReduce::Sum(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, stream);
-            cub::DeviceReduce::Sum(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, stream);
+            cub::DeviceReduce::Reduce(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, customAdd, Matrix<float,6,6>::Zero(), stream);
+            cub::DeviceReduce::Reduce(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, customAdd, Matrix<float,6,1>::Zero(), stream);
 
-            Matrix<float,6,6> *ata_sum = ata + N;
-            Matrix<float,6,1> *atb_sum = atb + N;
+            CUDA_CHECK_ERROR
 
-            Matrix<float,6,6> ata_cpu;
-            Matrix<float,6,1> atb_cpu;
+            Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
+            Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
 
-            CUDA_CALL(cudaMemcpyAsync(ata_cpu.data(),ata_sum,sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
-            CUDA_CALL(cudaMemcpyAsync(atb_cpu.data(),atb_sum,sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
+            std::cout << "ATA pointer: " << ata_result << std::endl;
+            std::cout << "ATB pointer: " << ata_result << std::endl;
+
+            CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
 
             cudaDeviceSynchronize();
 
@@ -471,9 +482,11 @@ public:
             estimatedPose2.block(0, 0, 3, 3) = rotation;
             estimatedPose2.block(0, 3, 3, 1) = translation;
 
+
+            std::cout << "Optimization iteration done." << std::endl;
         }
 
-        return Matrix4f::Identity();
+        return estimatedPose_cpu;
     }
 
     ~LinearICPCubOptimizer() {
@@ -489,9 +502,13 @@ public:
 
 private:
     cudaStream_t stream;
+    CustomAdd customAdd;
     Matrix<float,6,6> *ata;
     Matrix<float,6,1> *atb;
+    Matrix<float,6,6> *ata_result;
+    Matrix<float,6,1> *atb_result;
     Matrix4f *estimatedPose;
+    Matrix4f estimatedPose_cpu;
     Vector3f *transformedVertices; // On device memory
     Vector3f *transformedNormals;  // On device memory
 
