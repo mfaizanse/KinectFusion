@@ -151,6 +151,31 @@ __global__ void transformVerticesAndNormas(
     }
 }
 
+class TransformHelper {
+public:
+    TransformHelper() {}
+    ~TransformHelper() {}
+
+    void transformCurrentFrameVertices(FrameData& currentFrame, const Matrix4f* pose) {
+        transformVerticesAndNormas<<<(N_FIXED + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+                currentFrame.g_vertices,
+                currentFrame.g_normals,
+                pose,
+                currentFrame.width,
+                currentFrame.height,
+                N_FIXED,
+                currentFrame.g_vertices,
+                currentFrame.g_normals
+        );
+
+        CUDA_CHECK_ERROR
+
+        // Wait for GPU to finish before accessing on host
+        cudaDeviceSynchronize();
+    }
+};
+
+
 /**
  * ICP optimizer - using linear least-squares for optimization.
  */

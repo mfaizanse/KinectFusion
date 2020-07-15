@@ -66,7 +66,8 @@ set(HEADER_FILES
     Macros.h
     SurfaceMeasurement.h
     ICPOptimizer.h
-    CudaICPOptimizer.h BilateralFilter.h MipMap.h)
+    CudaICPOptimizer.h BilateralFilter.h MipMap.h VolumetricGridCuda.h)
+
 set(SOURCE_FILES
         FreeImageHelper.cpp
 )
