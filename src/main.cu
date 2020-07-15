@@ -6,9 +6,27 @@
 #include "SimpleMesh.h"
 #include "SurfaceMeasurement.h"
 #include "CudaICPOptimizer.h"
+#include "BilateralFilter.h"
+
+struct DepthMipMap {
+    float *depthMap;
+    size_t width;
+    size_t height;
+};
+
+struct VertexMipMap {
+    Vector3f *vertices;
+    Vector3f *normals;
+    size_t width;
+    size_t height;
+};
+
+#include "MipMap.h"
 #include "VolumetricGridCuda.h"
 
+
 #define USE_GPU_ICP	1
+#define USE_REDUCTION_ICP 1
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -25,11 +43,19 @@ int reconstructRoom() {
 
 	// sensor.processNextFrame();
 
+    const unsigned depthFrameWidth = sensor.getDepthImageWidth();
+    const unsigned depthFrameHeight = sensor.getDepthImageHeight();
+    const size_t N = depthFrameWidth * depthFrameHeight;
+
     // Setup the ICP optimizer.
     ICPOptimizer* optimizer;
 
 	if (USE_GPU_ICP)  {
-	    optimizer = new LinearICPCudaOptimizer();
+	    if(USE_REDUCTION_ICP) {
+	        optimizer = new LinearICPCubOptimizer(depthFrameWidth,depthFrameHeight);
+	    } else {
+            optimizer = new LinearICPCudaOptimizer();
+	    }
 	}
 	else {
         std::cout << "Using CPU ICP" << std::endl;
@@ -41,9 +67,7 @@ int reconstructRoom() {
     optimizer->usePointToPlaneConstraints(true);
     optimizer->setNbOfIterations(20);
 
-    const unsigned depthFrameWidth = sensor.getDepthImageWidth();
-    const unsigned depthFrameHeight = sensor.getDepthImageHeight();
-    const size_t N = depthFrameWidth * depthFrameHeight;
+
 
     // Intrinsics on host memory
     Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
@@ -72,11 +96,15 @@ int reconstructRoom() {
     FrameData previousFrame;
     FrameData currentFrame;
 
+    float *unfilteredDepth;
+
     previousFrame.width =  depthFrameWidth;
     previousFrame.height = depthFrameHeight;
 
     currentFrame.width =  depthFrameWidth;
     currentFrame.height = depthFrameHeight;
+
+    CUDA_CALL(cudaMalloc((void **) &unfilteredDepth, N * sizeof(float)));
 
     CUDA_CALL(cudaMalloc((void **) &previousFrame.depthMap, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
@@ -105,14 +133,15 @@ int reconstructRoom() {
 		float* depthMap = sensor.getDepth();
 
 		// Copy depth map to current frame, device memory
-        CUDA_CALL(cudaMemcpy(currentFrame.depthMap, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
+
+        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
 
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
-                                          currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
+                                            currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
-
 
         ///// Debugging code  start
         //// We write out the mesh to file for debugging.
