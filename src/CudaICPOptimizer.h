@@ -325,8 +325,8 @@ __global__ void computeAtbs(const float *currentDepthMap,
                             const size_t N,
                             const float distanceThreshold,
                             const float angleThreshold,
-                            Matrix<float,6,6> *ata,
-                            Matrix<float,6,1> *atb) {
+                            Matrix<double,6,6> *ata,
+                            Matrix<double,6,1> *atb) {
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     //Terminate all un-necessary threads
@@ -370,7 +370,7 @@ __global__ void computeAtbs(const float *currentDepthMap,
 
             if (distance <= distanceThreshold && angle <= angleThreshold) {
 
-                Matrix<float,6,1> at;
+                Matrix<double,6,1> at;
 
                 //printf("Match found  %I - %I \n", idx,  id2);
 
@@ -385,14 +385,14 @@ __global__ void computeAtbs(const float *currentDepthMap,
                 at[4] = n.y();
                 at[5] = n.z();
 
-                float b = n.dot(d - s);
+                double b = n.dot(d - s);
 
                 ata[idx] = at * at.transpose();
 
                 atb[idx] = at * b;
             } else {
-                ata[idx] = Matrix<float,6,6>::Zero();
-                atb[idx] = Matrix<float,6,1>::Zero();
+                ata[idx] = Matrix<double,6,6>::Zero();
+                atb[idx] = Matrix<double,6,1>::Zero();
             }
         }
     }
@@ -415,8 +415,8 @@ public:
         this->stream = stream;
 
         //Allocate for temporary results, that get reduced
-        CUDA_CALL(cudaMalloc((void**) &ata, sizeof(Matrix<float,6,6>) * (N+1)));
-        CUDA_CALL(cudaMalloc((void**) &atb, sizeof(Matrix<float,6,1>) * (N+1)));
+        CUDA_CALL(cudaMalloc((void**) &ata, sizeof(Matrix<double,6,6>) * (N+1)));
+        CUDA_CALL(cudaMalloc((void**) &atb, sizeof(Matrix<double,6,1>) * (N+1)));
 
         CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
 
@@ -475,20 +475,24 @@ public:
 
             CUDA_CHECK_ERROR
 
-            cub::DeviceReduce::Reduce(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, customAdd, Matrix<float,6,6>::Zero(), stream);
-            cub::DeviceReduce::Reduce(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, customAdd, Matrix<float,6,1>::Zero(), stream);
+            cub::DeviceReduce::Reduce(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, customAdd, Matrix<double,6,6>::Zero(), stream);
+            cub::DeviceReduce::Reduce(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, customAdd, Matrix<double,6,1>::Zero(), stream);
 
             CUDA_CHECK_ERROR
 
-            Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
-            Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
+            Matrix<double,6,6> ata_cpu = Matrix<double,6,6>::Zero();
+            Matrix<double,6,1> atb_cpu = Matrix<double,6,1>::Zero();
 
-            CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
-            CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<double,6,6>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<double,6,1>),cudaMemcpyDeviceToHost,stream));
 
             cudaDeviceSynchronize();
 
-            auto x = ata_cpu.llt().matrixL().solve(atb_cpu);
+            VectorXd x(6);
+
+            JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
+
+            x = svd.solve(atb_cpu);
 
             float alpha = x(0), beta = x(1), gamma = x(2);
 
@@ -497,7 +501,7 @@ public:
                                 AngleAxisf(beta, Vector3f::UnitY()).toRotationMatrix() *
                                 AngleAxisf(gamma, Vector3f::UnitZ()).toRotationMatrix();
 
-            Vector3f translation = x.tail(3);
+            Vector3f translation = x.tail(3).cast<float>();
 
             // Build the pose matrix using the rotation and translation matrices
             Matrix4f estimatedPose2 = Matrix4f::Identity();
@@ -530,8 +534,8 @@ public:
 private:
     cudaStream_t stream;
     CustomAdd customAdd;
-    Matrix<float,6,6> *ata;
-    Matrix<float,6,1> *atb;
+    Matrix<double,6,6> *ata;
+    Matrix<double,6,1> *atb;
     Matrix4f *estimatedPose;
     Matrix4f estimatedPose_cpu;
     Vector3f *transformedVertices; // On device memory
