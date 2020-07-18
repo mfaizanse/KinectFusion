@@ -390,6 +390,9 @@ __global__ void computeAtbs(const float *currentDepthMap,
                 ata[idx] = at * at.transpose();
 
                 atb[idx] = at * b;
+            } else {
+                ata[idx] = Matrix<float,6,6>::Zero();
+                atb[idx] = Matrix<float,6,1>::Zero();
             }
         }
     }
@@ -414,9 +417,6 @@ public:
         //Allocate for temporary results, that get reduced
         CUDA_CALL(cudaMalloc((void**) &ata, sizeof(Matrix<float,6,6>) * (N+1)));
         CUDA_CALL(cudaMalloc((void**) &atb, sizeof(Matrix<float,6,1>) * (N+1)));
-
-        CUDA_CALL(cudaMalloc((void**) &ata_result, sizeof(Matrix<float,6,6>)));
-        CUDA_CALL(cudaMalloc((void**) &atb_result, sizeof(Matrix<float,6,1>)));
 
         CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
 
@@ -483,15 +483,12 @@ public:
             Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
             Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
 
-            std::cout << "ATA pointer: " << ata_result << std::endl;
-            std::cout << "ATB pointer: " << ata_result << std::endl;
-
             CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
             CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
 
             cudaDeviceSynchronize();
 
-            auto x = ata_cpu.llt().solve(atb_cpu);
+            auto x = ata_cpu.llt().matrixL().solve(atb_cpu);
 
             float alpha = x(0), beta = x(1), gamma = x(2);
 
@@ -507,8 +504,13 @@ public:
             estimatedPose2.block(0, 0, 3, 3) = rotation;
             estimatedPose2.block(0, 3, 3, 1) = translation;
 
+            estimatedPose_cpu = estimatedPose2 * estimatedPose_cpu;
+            CUDA_CALL(cudaMemcpy(estimatedPose, estimatedPose_cpu.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
-            std::cout << "Optimization iteration done." << std::endl;
+            std::cout << "Solution vector:\n" << x << std::endl;
+            std::cout << "AtA:\n" << ata_cpu << std::endl;
+            std::cout << "Atb:\n" << atb_cpu << std::endl;
+            std::cout << "Optimization iteration done.\nNew estimated Pose:\n" << estimatedPose_cpu << std::endl;
         }
 
         return estimatedPose_cpu;
@@ -530,8 +532,6 @@ private:
     CustomAdd customAdd;
     Matrix<float,6,6> *ata;
     Matrix<float,6,1> *atb;
-    Matrix<float,6,6> *ata_result;
-    Matrix<float,6,1> *atb_result;
     Matrix4f *estimatedPose;
     Matrix4f estimatedPose_cpu;
     Vector3f *transformedVertices; // On device memory
