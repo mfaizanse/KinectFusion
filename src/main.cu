@@ -7,15 +7,17 @@
 #include "SurfaceMeasurement.h"
 #include "CudaICPOptimizer.h"
 #include "VolumetricGridCuda.h"
+#include "SurfacePrediction.h"
 
 #define USE_GPU_ICP	1
 
 int reconstructRoom() {
     // Setup virtual sensor
-	std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
-	std::string filenameBaseOut = std::string("../../outputs/mesh_");
+    std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
+    std::string filenameBaseOut = std::string("../../outputs/mesh_");
 
-	// Load video
+
+    // Load video
 	std::cout << "Initialize virtual sensor..." << std::endl;
 	VirtualSensor sensor;
 	if (!sensor.init(filenameIn)) {
@@ -150,7 +152,11 @@ int reconstructRoom() {
 		// @TODO: copy  currentCameraToWorld  to gpu
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
 
-		// Step 4: Ray-Casting
+        // Step 4: Ray-Casting
+		SurfacePrediction::surface_prediction(volumetricGrid,
+		        currentFrame.g_vertices, currentFrame.g_normals,
+		        depthIntrinsics,
+		        currentCameraToWorld);
 
 		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
