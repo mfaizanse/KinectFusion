@@ -490,11 +490,16 @@ public:
 
             VectorXd x(6);
 
-            JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            //JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            //x = svd.solve(atb_cpu);
 
-            x = svd.solve(atb_cpu);
+            x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
 
-            float alpha = x(0), beta = x(1), gamma = x(2);
+            //x = ata_cpu.llt().solve(atb_cpu);
+
+            //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
+
+            float alpha = x(2), beta = x(0), gamma = x(1);
 
             // Build the pose matrix
             Matrix3f rotation = AngleAxisf(alpha, Vector3f::UnitX()).toRotationMatrix() *
