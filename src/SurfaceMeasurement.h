@@ -56,7 +56,7 @@ measureSurfaceNormals(Vector3f *vertices, Vector3f *normals, size_t width, size_
 
     Vector3f invalid = Vector3f(-MINF,-MINF,-MINF);
 
-    if (u == 0 || v ==  0 || u == width-1 || v == height-1)  {
+    if (v == (width-1) || u == (height-1))  {
         normals[idx] = invalid;
     }
     else if(vertices[idx + width] != invalid && vertices[idx] != invalid && vertices[idx + 1] != invalid) {
