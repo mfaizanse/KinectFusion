@@ -6,6 +6,8 @@
 #include "Utils.h"
 #include "CudaICPOptimizer.h"
 #include "ICPOptimizer.h"
+#include <cub/device/device_reduce.cuh>
+#include <Eigen/Cholesky>
 
 #define N_FIXED 640*480
 
@@ -309,4 +311,244 @@ public:
 
 private:
     bool test;
+};
+
+__global__ void computeAtbs(const float *currentDepthMap,
+                            const Matrix4f *previousGlobalCameraPose,
+                            const Vector3f *currentVertices,
+                            const Vector3f *currentNormals,
+                            const Vector3f *previousVertices,
+                            const Vector3f *previousNormals,
+                            const Matrix3f *intrinsics,
+                            const size_t width,
+                            const size_t height,
+                            const size_t N,
+                            const float distanceThreshold,
+                            const float angleThreshold,
+                            Matrix<double,6,6> *ata,
+                            Matrix<double,6,1> *atb) {
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    //Terminate all un-necessary threads
+    if (idx >= N) {
+        return;
+    }
+
+    if (currentDepthMap[idx] > 0) {
+        // printf("a1\n");
+        // Transform previous point to camera coordinates from  world coordinates
+        Matrix4f poseInv = (*previousGlobalCameraPose).inverse();
+        auto pvH= previousVertices[idx].homogeneous();
+        Vector4f r1 =  poseInv * pvH;
+        Vector3f v_t_1 = Vector3f(r1.x(), r1.y(), r1.z());
+        //Vector3f v_t_1 =  ((*previousGlobalCameraPose).inverse() * previousVertices[idx].homogeneous()).hnormalized();
+
+        // Perspective project to image space
+        Vector3f p = *intrinsics * v_t_1;
+        int u = (int) (p[0] / p[2]);
+        int v = (int) (p[1] / p[2]);
+
+        size_t id2 = u * width + v;
+
+        // check if this point lies in frame and also have a normal
+        if(u >= 0 && u < width && v >= 0 &&  v < height && previousNormals[idx].x() != -MINF && currentVertices[id2].x() != -MINF) {
+            // printf("a2\n");
+            // Get this point p in current frame transform it into world coordinates
+
+            Vector4f cvH = currentVertices[id2].homogeneous();
+            Vector4f r2 = *previousGlobalCameraPose * cvH;
+            Vector3f v_t = Vector3f(r2.x(), r2.y(), r2.z());
+
+            Matrix3f rotation = previousGlobalCameraPose->block(0,  0, 3, 3);
+            Vector3f n_t = rotation * currentNormals[id2];
+
+            // check distance threshold
+            float distance = (v_t - previousVertices[idx]).norm();
+            // check angle between normals
+            float angle = (n_t.dot(previousNormals[idx])) / (n_t.norm() * previousNormals[idx].norm());
+            angle = acos(angle);
+
+            if (distance <= distanceThreshold && angle <= angleThreshold) {
+
+                Matrix<double,6,1> at;
+
+                //printf("Match found  %I - %I \n", idx,  id2);
+
+                Vector3f s = currentVertices[id2];
+                Vector3f d = previousVertices[idx];
+                Vector3f n = previousNormals[idx];
+
+                at[0] = s.z() * n.y() - s.y() * n.z();
+                at[1] = s.x() * n.z() - s.z() * n.x();
+                at[2] = s.y() * n.x() - s.x() * n.y();
+                at[3] = n.x();
+                at[4] = n.y();
+                at[5] = n.z();
+
+                double b = n.dot(d - s);
+
+                ata[idx] = at * at.transpose();
+
+                atb[idx] = at * b;
+            } else {
+                ata[idx] = Matrix<double,6,6>::Zero();
+                atb[idx] = Matrix<double,6,1>::Zero();
+            }
+        }
+    }
+}
+
+struct CustomAdd
+{
+    template <typename T>
+    __device__ __forceinline__
+    T operator()(const T &a, const T &b) const {
+        return b + a;
+    }
+};
+
+class LinearICPCubOptimizer : public ICPOptimizer {
+public:
+    LinearICPCubOptimizer(size_t width, size_t height, cudaStream_t stream = 0) {
+        const size_t N = width * height;
+
+        this->stream = stream;
+
+        //Allocate for temporary results, that get reduced
+        CUDA_CALL(cudaMalloc((void**) &ata, sizeof(Matrix<double,6,6>) * (N+1)));
+        CUDA_CALL(cudaMalloc((void**) &atb, sizeof(Matrix<double,6,1>) * (N+1)));
+
+        CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
+
+        CUDA_CALL(cudaMalloc((void **) &transformedVertices, N * sizeof(Vector3f)));
+        CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
+
+        //Set up cub temp memory beforehand, should be the same for every frame
+        cub::DeviceReduce::Sum(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, stream);
+        cub::DeviceReduce::Sum(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, stream);
+
+        CUDA_CALL(cudaMalloc(&d_temp_storage_ata, temp_storage_bytes_ata));
+        CUDA_CALL(cudaMalloc(&d_temp_storage_atb, temp_storage_bytes_atb));
+    }
+
+    virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f& initialPose) override {
+
+        const size_t N = currentFrame.width * currentFrame.height;
+
+        CUDA_CALL(cudaMemcpyAsync(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice, stream));
+
+        CUDA_CALL(cudaMemcpyAsync(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost, stream));
+
+        for (int i = 0; i < m_nIterations; ++i) {
+            // Compute the matches.
+            std::cout << "Matching points ... Iteration: " << i << std::endl;
+
+            transformVerticesAndNormas<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(
+                    currentFrame.g_vertices,
+                    currentFrame.g_normals,
+                    estimatedPose,
+                    currentFrame.width,
+                    currentFrame.height,
+                    N,
+                    transformedVertices,
+                    transformedNormals
+            );
+
+            CUDA_CHECK_ERROR
+
+            computeAtbs<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(
+                    currentFrame.depthMap,
+                    previousFrame.globalCameraPose,
+                    transformedVertices,
+                    transformedNormals,
+                    previousFrame.g_vertices,
+                    previousFrame.g_normals,
+                    &intrinsics,
+                    currentFrame.width,
+                    currentFrame.height,
+                    N,
+                    distanceThreshold,
+                    angleThreshold,
+                    ata,
+                    atb
+            );
+
+            CUDA_CHECK_ERROR
+
+            cub::DeviceReduce::Reduce(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, customAdd, Matrix<double,6,6>::Zero(), stream);
+            cub::DeviceReduce::Reduce(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, customAdd, Matrix<double,6,1>::Zero(), stream);
+
+            CUDA_CHECK_ERROR
+
+            Matrix<double,6,6> ata_cpu = Matrix<double,6,6>::Zero();
+            Matrix<double,6,1> atb_cpu = Matrix<double,6,1>::Zero();
+
+            CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<double,6,6>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<double,6,1>),cudaMemcpyDeviceToHost,stream));
+
+            cudaDeviceSynchronize();
+
+            VectorXd x(6);
+
+            //JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            //x = svd.solve(atb_cpu);
+
+            x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
+
+            //x = ata_cpu.llt().solve(atb_cpu);
+
+            //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
+
+            float alpha = x(2), beta = x(0), gamma = x(1);
+
+            // Build the pose matrix
+            Matrix3f rotation = AngleAxisf(alpha, Vector3f::UnitX()).toRotationMatrix() *
+                                AngleAxisf(beta, Vector3f::UnitY()).toRotationMatrix() *
+                                AngleAxisf(gamma, Vector3f::UnitZ()).toRotationMatrix();
+
+            Vector3f translation = x.tail(3).cast<float>();
+
+            // Build the pose matrix using the rotation and translation matrices
+            Matrix4f estimatedPose2 = Matrix4f::Identity();
+            estimatedPose2.block(0, 0, 3, 3) = rotation;
+            estimatedPose2.block(0, 3, 3, 1) = translation;
+
+            estimatedPose_cpu = estimatedPose2 * estimatedPose_cpu;
+            CUDA_CALL(cudaMemcpy(estimatedPose, estimatedPose_cpu.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
+            std::cout << "Solution vector:\n" << x << std::endl;
+            std::cout << "AtA:\n" << ata_cpu << std::endl;
+            std::cout << "Atb:\n" << atb_cpu << std::endl;
+            std::cout << "Optimization iteration done.\nNew estimated Pose:\n" << estimatedPose_cpu << std::endl;
+        }
+
+        return estimatedPose_cpu;
+    }
+
+    ~LinearICPCubOptimizer() {
+        //Free temp memory
+        CUDA_CALL(cudaFree(ata));
+        CUDA_CALL(cudaFree(atb));
+        CUDA_CALL(cudaFree(estimatedPose));
+        CUDA_CALL(cudaFree(transformedVertices));
+        CUDA_CALL(cudaFree(transformedNormals));
+        CUDA_CALL(cudaFree(d_temp_storage_ata));
+        CUDA_CALL(cudaFree(d_temp_storage_atb));
+    }
+
+private:
+    cudaStream_t stream;
+    CustomAdd customAdd;
+    Matrix<double,6,6> *ata;
+    Matrix<double,6,1> *atb;
+    Matrix4f *estimatedPose;
+    Matrix4f estimatedPose_cpu;
+    Vector3f *transformedVertices; // On device memory
+    Vector3f *transformedNormals;  // On device memory
+
+    void *d_temp_storage_ata = NULL;
+    size_t temp_storage_bytes_ata = 0;
+    void *d_temp_storage_atb = NULL;
+    size_t temp_storage_bytes_atb = 0;
+
 };

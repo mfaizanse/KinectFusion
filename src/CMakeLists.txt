@@ -14,6 +14,7 @@ set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
 # Options
 set(LIBRARY_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../libs CACHE PATH "Path to lib folder")
 set(Eigen3_INCLUDE_DIR ${LIBRARY_DIR}/eigen CACHE PATH "Path to Eigen source folder")
+set(CUB_INCLUDE_DIR ${LIBRARY_DIR}/cub CACHE PATH "Path to CUB source folder")
 #set(glog_INCLUDE_DIR ${LIBRARY_DIR}/glog-lib/include CACHE PATH "Path to glog source folder")
 #set(Ceres_DIR ${LIBRARY_DIR}/Ceres/CMake CACHE PATH "Path to Ceres build folder")
 #set(Ceres_INCLUDE_DIR ${Ceres_DIR}/../include)
@@ -51,6 +52,7 @@ if (MSVC)
 endif()
 
 message(STATUS "path to eigen3 include directory = ${Eigen3_INCLUDE_DIR}")
+message(STATUS "Path to CUB include directory = ${CUB_INCLUDE_DIR}")
 
 # Set files to be compiled
 set(HEADER_FILES 
@@ -64,8 +66,8 @@ set(HEADER_FILES
     Macros.h
     SurfaceMeasurement.h
     ICPOptimizer.h
-    CudaICPOptimizer.h
-    VolumetricGridCuda.h)
+    CudaICPOptimizer.h BilateralFilter.h MipMap.h VolumetricGridCuda.h)
+
 set(SOURCE_FILES
         FreeImageHelper.cpp
 )
@@ -74,7 +76,7 @@ link_directories(${FreeImage_LIBRARY_DIR})
 add_executable(kinect_fusion main.cu ${HEADER_FILES} ${SOURCE_FILES})
 #target_link_libraries (kinect_fusion Eigen3::Eigen)
 target_link_libraries(kinect_fusion freeimage)
-target_include_directories(kinect_fusion PUBLIC ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${FreeImage_INCLUDE_DIR})
+target_include_directories(kinect_fusion PUBLIC ${CUB_INCLUDE_DIR} ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${FreeImage_INCLUDE_DIR})
 
 set_target_properties(
         kinect_fusion
