@@ -195,10 +195,12 @@ int reconstructRoom() {
 	}
 
 	//  Save Volumetric Grid as pointclouds
-    std::stringstream ss2;
+    std::stringstream ss2, ss3;
     ss2 << filenameBaseOut << "tsdf.ply";
+    ss3 << filenameBaseOut << "tsdf.bin";
     volumetricGrid.copyVGFromDeviceToHost();
 	volumetricGrid.SaveVoxelGrid2SurfacePointCloud(ss2.str(),  0.2f, 0.0f);
+    volumetricGrid.SaveVoxelGrid(ss3.str());
 
 	// Free all pointers
     CUDA_CALL(cudaFree(cudaDepthIntrinsics));
