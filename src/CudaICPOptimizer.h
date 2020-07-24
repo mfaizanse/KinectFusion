@@ -481,13 +481,6 @@ __global__ void computeAtbs(const float *currentDepthMap,
                 ata[idx] = Matrix<double,6,6>::Zero();
                 atb[idx] = Matrix<double,6,1>::Zero();
             }
-
-            for (int i=0;i<6;i++) {
-                atb[idx](i) = 0;
-                for (int j=0;j<6;j++) {
-                    ata[idx](i,j) = 0;
-                }
-            }
         }
     }
 }
