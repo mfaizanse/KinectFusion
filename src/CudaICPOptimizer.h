@@ -11,6 +11,7 @@
 
 #define N_FIXED 640*480
 
+// My GPU only supports max 48kb of shared memory per block, so I am using smaller block size
 #define BLOCKSIZE_REDUCED 256
 
 __global__ void sumReduction(
@@ -46,7 +47,6 @@ __global__ void sumReduction(
     // Let the thread 0 for this block write it's result to main memory
     // Result is indexed by this block
     if (threadIdx.x == 0) {
-        // printf("BlockId: %d\n", blockIdx.x);
         AtAs[blockIdx.x] = partial_sum_ata[0];
         Atbs[blockIdx.x] = partial_sum_atb[0];
     }
@@ -73,7 +73,6 @@ __global__ void getCorrespondences(
     __shared__ Matrix<float, 6, 1> partial_sum_atb[BLOCKSIZE_REDUCED];
 
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-
 
     //Terminate all un-necessary threads
     if (idx >= N) {
@@ -124,8 +123,6 @@ __global__ void getCorrespondences(
                 // @TODO: Correct  match, add  this to matches  list
                 isCorrespondenceFound = true;
 
-                //printf("Match found  %I - %I \n", idx,  id2);
-
                 Vector3f s = currentVertices[id2];
                 Vector3f d = previousVertices[idx];
                 Vector3f n = previousNormals[idx];
@@ -143,7 +140,6 @@ __global__ void getCorrespondences(
                 float b = n[0] * d[0] + n[1] * d[1] + n[2] * d[2] - n[0] * s[0] - n[1] * s[1] - n[2] * s[2];
 
                 local_ata = at * at.transpose();
-
                 local_atb = at * b;
             }
         }
@@ -172,7 +168,6 @@ __global__ void getCorrespondences(
     // Let the thread 0 for this block write it's result to main memory
     // Result is indexed by this block
     if (threadIdx.x == 0) {
-        // printf("BlockId: %d\n", blockIdx.x);
         AtAs[blockIdx.x] = partial_sum_ata[0];
         Atbs[blockIdx.x] = partial_sum_atb[0];
     }
@@ -196,7 +191,6 @@ __global__ void transformVerticesAndNormals(
     }
 
     if (vertices[idx].x() != -MINF) {
-        // printf("a1\n");
         auto vH = vertices[idx].homogeneous();
         Vector4f r1 =  *pose * vH;
 
@@ -211,7 +205,6 @@ __global__ void transformVerticesAndNormals(
     }
 
     if (normals[idx].x() != -MINF) {
-        // printf("a2\n");
         Matrix3f rotation = (*pose).block(0, 0, 3, 3);
         Matrix3f rt =  rotation.inverse();
         rt = rt.transpose();
@@ -266,7 +259,6 @@ public:
         CUDA_CALL(cudaMalloc((void**) &atas, sizeof(Matrix<float,6,6>) * N));
         CUDA_CALL(cudaMalloc((void**) &atbs, sizeof(Matrix<float,6,1>) * N));
 
-
         CUDA_CALL(cudaMalloc((void **) &transformedVertices, N * sizeof(Vector3f)));
         CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
     }
@@ -274,42 +266,28 @@ public:
         CUDA_CALL(cudaFree(estimatedPose));
         CUDA_CALL(cudaFree(atas));
         CUDA_CALL(cudaFree(atbs));
+
+        CUDA_CALL(cudaFree(transformedVertices));
+        CUDA_CALL(cudaFree(transformedNormals));
     }
 
     virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f& initialPose) override {
-
         const size_t N = currentFrame.width * currentFrame.height;
-        // The initial estimate can be given as an argument.
 
+        // The initial estimate can be given as an argument.
         CUDA_CALL(cudaMemcpy(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice));
 
-        Matrix4f *estimatedPose_cpu;
-        estimatedPose_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
-        CUDA_CALL(cudaMemcpy(estimatedPose_cpu, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
+        Matrix4f estimatedPose_cpu;
+        CUDA_CALL(cudaMemcpy(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
 
-//        Matrix<float, N_FIXED, 6> *A;
-//        Matrix<float, N_FIXED, 1> *b;
-//
-//        CUDA_CALL(cudaMalloc((void **) &A, sizeof(Matrix<float, N_FIXED, 6>)));
-//        CUDA_CALL(cudaMalloc((void **) &b, sizeof(Matrix<float, N_FIXED, 1>)));
-//
-//        Matrix<float, N_FIXED, 6> *A_cpu;
-//        Matrix<float, N_FIXED, 1> *b_cpu;
-//
-//        A_cpu = (Matrix<float, N_FIXED, 6> *) malloc(sizeof(Matrix<float, N_FIXED, 6>));
-//        b_cpu = (Matrix<float, N_FIXED, 1> *) malloc(sizeof(Matrix<float, N_FIXED, 1>));
-
-//        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
-
-//        CUDA_CALL(cudaMemcpy(A, A_cpu.data(), sizeof(A_cpu), cudaMemcpyHostToDevice));
-//        CUDA_CALL(cudaMemcpy(b, b_cpu.data(), sizeof(b_cpu), cudaMemcpyHostToDevice));
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
             std::cout << "Matching points ... Iteration: " << i << std::endl;
             clock_t begin = clock();
 
-            // @TODO: Transform points and normals.  IMPORTANT
+            // Transform points and normals.  IMPORTANT.
+            // 640*480 = 307200
             transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
@@ -372,27 +350,12 @@ public:
             CUDA_CALL(cudaMemcpyAsync(atb_cpu.data(),atbs[0].data(),sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
 
             VectorXf x(6);
+            x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
 
             //JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
             //x = svd.solve(atb_cpu);
-
-             x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
-
-//            //x = ata_cpu.llt().solve(atb_cpu);
-//
-//            //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
-
-//            // @TODO: Chck if correc,  Shouldn't we do A.data() and b.data()
-//            CUDA_CALL(cudaMemcpy(A_cpu, A->data(), sizeof(Matrix<float, N_FIXED, 6>), cudaMemcpyDeviceToHost));
-//            CUDA_CALL(cudaMemcpy(b_cpu, b->data(), sizeof(Matrix<float, N_FIXED, 1>), cudaMemcpyDeviceToHost));
-//
-//            // Solve the system
-//            VectorXf x(6);
-//            //std::cout << "estimatedPose-1 "  << std::endl;
-//            JacobiSVD<MatrixXf> svd(*A_cpu, ComputeThinU | ComputeThinV);
-//            //std::cout << "estimatedPose-2 "  << std::endl;
-//            x = svd.solve(*b_cpu);
-//            //std::cout << "estimatedPose-3 "  << std::endl;
+            //x = ata_cpu.llt().solve(atb_cpu);
+            //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
 
             float alpha = x(0), beta = x(1), gamma = x(2);
 
@@ -408,26 +371,19 @@ public:
             estimatedPose2.block(0, 0, 3, 3) = rotation;
             estimatedPose2.block(0, 3, 3, 1) = translation;
 
-            *estimatedPose_cpu = estimatedPose2 * *estimatedPose_cpu;
-            CUDA_CALL(cudaMemcpy(estimatedPose, (*estimatedPose_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+            estimatedPose_cpu = estimatedPose2 * estimatedPose_cpu;
+            CUDA_CALL(cudaMemcpy(estimatedPose, estimatedPose_cpu.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
             // std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
 
             std::cout << "Optimization iteration done." << std::endl;
         }
 
-//        CUDA_CALL(cudaFree(A));
-//        CUDA_CALL(cudaFree(b));
-//
-//
-//        free(A_cpu);
-//        free(b_cpu);
-        // @TODO: See how can we free this pointer??  do  we need to?
-        return *estimatedPose_cpu;
+        return estimatedPose_cpu;
     }
 
 private:
-    Matrix4f *estimatedPose; // device memory
+    Matrix4f *estimatedPose; // On device memory
     Matrix<float,6,6> *atas; // On device memory
     Matrix<float,6,1> *atbs; // On device memory
     Vector3f *transformedVertices; // On device memory
