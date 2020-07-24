@@ -6,10 +6,28 @@
 #include "SimpleMesh.h"
 #include "SurfaceMeasurement.h"
 #include "CudaICPOptimizer.h"
+#include "BilateralFilter.h"
+
+struct DepthMipMap {
+    float *depthMap;
+    size_t width;
+    size_t height;
+};
+
+struct VertexMipMap {
+    Vector3f *vertices;
+    Vector3f *normals;
+    size_t width;
+    size_t height;
+};
+
+#include "MipMap.h"
 #include "VolumetricGridCuda.h"
 #include "SurfacePrediction.h"
 
+
 #define USE_GPU_ICP	1
+#define USE_REDUCTION_ICP 0
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -27,11 +45,19 @@ int reconstructRoom() {
 
 	// sensor.processNextFrame();
 
+    const unsigned depthFrameWidth = sensor.getDepthImageWidth();
+    const unsigned depthFrameHeight = sensor.getDepthImageHeight();
+    const size_t N = depthFrameWidth * depthFrameHeight;
+
     // Setup the ICP optimizer.
     ICPOptimizer* optimizer;
 
 	if (USE_GPU_ICP)  {
-	    optimizer = new LinearICPCudaOptimizer();
+	    if(USE_REDUCTION_ICP) {
+	        optimizer = new LinearICPCubOptimizer(depthFrameWidth,depthFrameHeight);
+	    } else {
+            optimizer = new LinearICPCudaOptimizer(depthFrameWidth,depthFrameHeight);
+	    }
 	}
 	else {
         std::cout << "Using CPU ICP" << std::endl;
@@ -43,9 +69,7 @@ int reconstructRoom() {
     optimizer->usePointToPlaneConstraints(true);
     optimizer->setNbOfIterations(20);
 
-    const unsigned depthFrameWidth = sensor.getDepthImageWidth();
-    const unsigned depthFrameHeight = sensor.getDepthImageHeight();
-    const size_t N = depthFrameWidth * depthFrameHeight;
+
 
     // Intrinsics on host memory
     Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
@@ -74,11 +98,15 @@ int reconstructRoom() {
     FrameData previousFrame;
     FrameData currentFrame;
 
+    float *unfilteredDepth;
+
     previousFrame.width =  depthFrameWidth;
     previousFrame.height = depthFrameHeight;
 
     currentFrame.width =  depthFrameWidth;
     currentFrame.height = depthFrameHeight;
+
+    CUDA_CALL(cudaMalloc((void **) &unfilteredDepth, N * sizeof(float)));
 
     CUDA_CALL(cudaMalloc((void **) &previousFrame.depthMap, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
@@ -94,6 +122,7 @@ int reconstructRoom() {
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
     Matrix4f *cuda4fIdentity;
+
     CUDA_CALL(cudaMalloc((void **) &cuda4fIdentity, sizeof(Matrix4f)));
     CUDA_CALL(cudaMemcpy(cuda4fIdentity, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
@@ -101,20 +130,21 @@ int reconstructRoom() {
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
 	int i = 0;
-	const int iMax = 3;
+	const int iMax = 4;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
 
 		// Copy depth map to current frame, device memory
-        CUDA_CALL(cudaMemcpy(currentFrame.depthMap, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
+        CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
+
+        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
 
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
-                                          currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
+                                            currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
-
 
         ///// Debugging code  start
         //// We write out the mesh to file for debugging.
@@ -184,6 +214,7 @@ int reconstructRoom() {
 
 		// if (i % 5 == 0) {
 		if (i > 0) {
+		    std::cout << "Saving mesh ..." << std::endl;
             // We write out the mesh to file for debugging.
             SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
             SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
@@ -201,10 +232,12 @@ int reconstructRoom() {
 	}
 
 	//  Save Volumetric Grid as pointclouds
-    std::stringstream ss2;
+    std::stringstream ss2, ss3;
     ss2 << filenameBaseOut << "tsdf.ply";
+    ss3 << filenameBaseOut << "tsdf.bin";
     volumetricGrid.copyVGFromDeviceToHost();
 	volumetricGrid.SaveVoxelGrid2SurfacePointCloud(ss2.str(),  0.2f, 0.0f);
+    volumetricGrid.SaveVoxelGrid(ss3.str());
 
 	// Free all pointers
     CUDA_CALL(cudaFree(cudaDepthIntrinsics));

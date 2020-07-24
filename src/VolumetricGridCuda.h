@@ -262,6 +262,27 @@ public:
         fclose(fp);
     }
 
+    void SaveVoxelGrid(const std::string &voxel_grid_saveto_path) {
+        // Save TSDF voxel grid and its parameters to disk as binary file (float array)
+        std::cout << "Saving TSDF voxel grid values to disk (tsdf.bin)..." << std::endl;
+
+        std::ofstream outFile(voxel_grid_saveto_path, std::ios::binary | std::ios::out);
+        float voxel_grid_dim_xf = (float) voxel_grid_dim_x;
+        float voxel_grid_dim_yf = (float) voxel_grid_dim_y;
+        float voxel_grid_dim_zf = (float) voxel_grid_dim_z;
+        outFile.write((char*)&voxel_grid_dim_xf, sizeof(float));
+        outFile.write((char*)&voxel_grid_dim_yf, sizeof(float));
+        outFile.write((char*)&voxel_grid_dim_zf, sizeof(float));
+        outFile.write((char*)&voxel_grid_origin_x, sizeof(float));
+        outFile.write((char*)&voxel_grid_origin_y, sizeof(float));
+        outFile.write((char*)&voxel_grid_origin_z, sizeof(float));
+        outFile.write((char*)&voxel_size, sizeof(float));
+        outFile.write((char*)&trunc_margin, sizeof(float));
+        for (int i = 0; i < voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z; ++i)
+            outFile.write((char*)&voxel_grid_TSDF[i], sizeof(float));
+        outFile.close();
+    }
+
     void copyVGFromDeviceToHost() {
         // Load TSDF voxel grid weights and distances from device back to host
         CUDA_CALL(cudaMemcpy(voxel_grid_TSDF, voxel_grid_TSDF_GPU,
