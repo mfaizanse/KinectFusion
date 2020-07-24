@@ -11,6 +11,47 @@
 
 #define N_FIXED 640*480
 
+#define BLOCKSIZE_REDUCED 256
+
+__global__ void sumReduction(
+        Matrix<float, 6, 6> *AtAs,
+        Matrix<float, 6, 1> *Atbs
+) {
+    // Allocate shared memory
+    __shared__ Matrix<float, 6, 6> partial_sum_ata[BLOCKSIZE_REDUCED];
+    __shared__ Matrix<float, 6, 1> partial_sum_atb[BLOCKSIZE_REDUCED];
+
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    ///// ##### Tree Reduction (bank conflicts approach)
+    ///// https://github.com/CoffeeBeforeArch/cuda_programming/blob/master/sumReduction/bank_conflicts/sumReduction.cu
+    // Load elements into shared memory
+    partial_sum_ata[threadIdx.x] = AtAs[idx];
+    partial_sum_atb[threadIdx.x] = Atbs[idx];
+    __syncthreads();
+
+    // Increase the stride of the access until we exceed the CTA dimensions
+    for (int s = 1; s < blockDim.x; s *= 2) {
+        // Change the indexing to be sequential threads
+        int index = 2 * s * threadIdx.x;
+
+        // Each thread does work unless the index goes off the block
+        if (index < blockDim.x) {
+            partial_sum_ata[index] += partial_sum_ata[index + s];
+            partial_sum_atb[index] += partial_sum_atb[index + s];
+        }
+        __syncthreads();
+    }
+
+    // Let the thread 0 for this block write it's result to main memory
+    // Result is indexed by this block
+    if (threadIdx.x == 0) {
+        // printf("BlockId: %d\n", blockIdx.x);
+        AtAs[blockIdx.x] = partial_sum_ata[0];
+        Atbs[blockIdx.x] = partial_sum_atb[0];
+    }
+}
+
 __global__ void getCorrespondences(
         const float *currentDepthMap,
         const Matrix4f *previousGlobalCameraPose,
@@ -24,17 +65,26 @@ __global__ void getCorrespondences(
         const size_t N,
         const float distanceThreshold,
         const float angleThreshold,
-        Matrix<float, N_FIXED, 6> *A,
-        Matrix<float, N_FIXED, 1> *b
+        Matrix<float, 6, 6> *AtAs,
+        Matrix<float, 6, 1> *Atbs
 ) {
+    // Allocate shared memory
+    __shared__ Matrix<float, 6, 6> partial_sum_ata[BLOCKSIZE_REDUCED];
+    __shared__ Matrix<float, 6, 1> partial_sum_atb[BLOCKSIZE_REDUCED];
+
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
 
     //Terminate all un-necessary threads
     if (idx >= N) {
+        printf("WARNING!!!!!!!!!!!!!!!!!: UN-NESSARY THREAD IN ICP, TREE REDUCTION MAY GET STUCK...!!");
         return;
     }
 
     bool isCorrespondenceFound = false;
+
+    Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
+    Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
 
     if (currentDepthMap[idx] > 0) {
         // printf("a1\n");
@@ -80,24 +130,51 @@ __global__ void getCorrespondences(
                 Vector3f d = previousVertices[idx];
                 Vector3f n = previousNormals[idx];
 
-                // Add the point-to-plane constraints to the system
-                (*A)(idx,0) = n[2] * s[1] - n[1] * s[2];
-                (*A)(idx,1) = n[0] * s[2] - n[2] * s[0];
-                (*A)(idx,2) = n[1] * s[0] - n[0] * s[1];
-                (*A)(idx,3) = n[0];
-                (*A)(idx,4) = n[1];
-                (*A)(idx,5) = n[2];
+                Matrix<float,6,1> at;
 
-                (*b)[idx] = n[0] * d[0] + n[1] * d[1] + n[2] * d[2] - n[0] * s[0] - n[1] * s[1] - n[2] * s[2];
+                // Add the point-to-plane constraints to the system
+                at(0) = n[2] * s[1] - n[1] * s[2];
+                at(1) = n[0] * s[2] - n[2] * s[0];
+                at(2) = n[1] * s[0] - n[0] * s[1];
+                at(3) = n[0];
+                at(4) = n[1];
+                at(5) = n[2];
+
+                float b = n[0] * d[0] + n[1] * d[1] + n[2] * d[2] - n[0] * s[0] - n[1] * s[1] - n[2] * s[2];
+
+                local_ata = at * at.transpose();
+
+                local_atb = at * b;
             }
         }
     }
 
-    if(!isCorrespondenceFound) {
-        // printf("Match not found\n");
+    ///// ##### Tree Reduction (bank conflicts approach)
+    ///// https://github.com/CoffeeBeforeArch/cuda_programming/blob/master/sumReduction/bank_conflicts/sumReduction.cu
+    // Load elements into shared memory
+    partial_sum_ata[threadIdx.x] = local_ata;
+    partial_sum_atb[threadIdx.x] = local_atb;
+    __syncthreads();
 
-        (*A)(idx,0) = (*A)(idx,1) = (*A)(idx,2) = (*A)(idx,3) = (*A)(idx,4) = (*A)(idx,5) = 0.0f;
-        (*b)[idx] = 0.0f;
+    // Increase the stride of the access until we exceed the CTA dimensions
+    for (int s = 1; s < blockDim.x; s *= 2) {
+        // Change the indexing to be sequential threads
+        int index = 2 * s * threadIdx.x;
+
+        // Each thread does work unless the index goes off the block
+        if (index < blockDim.x) {
+            partial_sum_ata[index] += partial_sum_ata[index + s];
+            partial_sum_atb[index] += partial_sum_atb[index + s];
+        }
+        __syncthreads();
+    }
+
+    // Let the thread 0 for this block write it's result to main memory
+    // Result is indexed by this block
+    if (threadIdx.x == 0) {
+        // printf("BlockId: %d\n", blockIdx.x);
+        AtAs[blockIdx.x] = partial_sum_ata[0];
+        Atbs[blockIdx.x] = partial_sum_atb[0];
     }
 }
 
@@ -181,37 +258,46 @@ public:
  */
 class LinearICPCudaOptimizer : public ICPOptimizer {
 public:
-    LinearICPCudaOptimizer() {}
-    ~LinearICPCudaOptimizer() {}
+    LinearICPCudaOptimizer(size_t width, size_t height, cudaStream_t stream = 0) {
+        this->stream = stream;
+        const size_t N = width * height;
+
+        CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
+        CUDA_CALL(cudaMalloc((void**) &atas, sizeof(Matrix<float,6,6>) * N));
+        CUDA_CALL(cudaMalloc((void**) &atbs, sizeof(Matrix<float,6,1>) * N));
+
+
+        CUDA_CALL(cudaMalloc((void **) &transformedVertices, N * sizeof(Vector3f)));
+        CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
+    }
+    ~LinearICPCudaOptimizer() {
+        CUDA_CALL(cudaFree(estimatedPose));
+        CUDA_CALL(cudaFree(atas));
+        CUDA_CALL(cudaFree(atbs));
+    }
 
     virtual Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame, const FrameData& previousFrame, Matrix4f& initialPose) override {
 
         const size_t N = currentFrame.width * currentFrame.height;
         // The initial estimate can be given as an argument.
-        Matrix4f *estimatedPose;
-        CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
+
         CUDA_CALL(cudaMemcpy(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice));
 
         Matrix4f *estimatedPose_cpu;
         estimatedPose_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
         CUDA_CALL(cudaMemcpy(estimatedPose_cpu, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
 
-        Vector3f *transformedVertices; // On device memory
-        Vector3f *transformedNormals;  // On device memory
-        CUDA_CALL(cudaMalloc((void **) &transformedVertices, N * sizeof(Vector3f)));
-        CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
-
-        Matrix<float, N_FIXED, 6> *A;
-        Matrix<float, N_FIXED, 1> *b;
-
-        CUDA_CALL(cudaMalloc((void **) &A, sizeof(Matrix<float, N_FIXED, 6>)));
-        CUDA_CALL(cudaMalloc((void **) &b, sizeof(Matrix<float, N_FIXED, 1>)));
-
-        Matrix<float, N_FIXED, 6> *A_cpu;
-        Matrix<float, N_FIXED, 1> *b_cpu;
-
-        A_cpu = (Matrix<float, N_FIXED, 6> *) malloc(sizeof(Matrix<float, N_FIXED, 6>));
-        b_cpu = (Matrix<float, N_FIXED, 1> *) malloc(sizeof(Matrix<float, N_FIXED, 1>));
+//        Matrix<float, N_FIXED, 6> *A;
+//        Matrix<float, N_FIXED, 1> *b;
+//
+//        CUDA_CALL(cudaMalloc((void **) &A, sizeof(Matrix<float, N_FIXED, 6>)));
+//        CUDA_CALL(cudaMalloc((void **) &b, sizeof(Matrix<float, N_FIXED, 1>)));
+//
+//        Matrix<float, N_FIXED, 6> *A_cpu;
+//        Matrix<float, N_FIXED, 1> *b_cpu;
+//
+//        A_cpu = (Matrix<float, N_FIXED, 6> *) malloc(sizeof(Matrix<float, N_FIXED, 6>));
+//        b_cpu = (Matrix<float, N_FIXED, 1> *) malloc(sizeof(Matrix<float, N_FIXED, 1>));
 
 //        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
 
@@ -237,7 +323,8 @@ public:
 
             CUDA_CHECK_ERROR
 
-            getCorrespondences<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+            // 1200 blocks
+            getCorrespondences<<<(N + BLOCKSIZE_REDUCED - 1) / BLOCKSIZE_REDUCED, BLOCKSIZE_REDUCED, 0, 0 >>> (
                     currentFrame.depthMap,
                     previousFrame.globalCameraPose,
                     transformedVertices,
@@ -250,32 +337,62 @@ public:
                     N,
                     distanceThreshold,
                     angleThreshold,
-                    A,
-                    b
+                    atas,
+                    atbs
                     );
+
+            CUDA_CHECK_ERROR
+
+            sumReduction<<<6, 200, 0, 0 >>> (
+                    atas,
+                    atbs
+            );
+
+            CUDA_CHECK_ERROR
+
+            sumReduction<<<1, 6, 0, 0 >>> (
+                    atas,
+                    atbs
+            );
 
             CUDA_CHECK_ERROR
 
             // Wait for GPU to finish before accessing on host
             cudaDeviceSynchronize();
 
-            //cudaStreamSynchronize(0);
 
             clock_t end = clock();
             double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
             std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
 
-            // @TODO: Chck if correc,  Shouldn't we do A.data() and b.data()
-            CUDA_CALL(cudaMemcpy(A_cpu, A->data(), sizeof(Matrix<float, N_FIXED, 6>), cudaMemcpyDeviceToHost));
-            CUDA_CALL(cudaMemcpy(b_cpu, b->data(), sizeof(Matrix<float, N_FIXED, 1>), cudaMemcpyDeviceToHost));
+            Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
+            Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
 
-            // Solve the system
+            CUDA_CALL(cudaMemcpyAsync(ata_cpu.data(),atas[0].data(),sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(atb_cpu.data(),atbs[0].data(),sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
+
             VectorXf x(6);
-            //std::cout << "estimatedPose-1 "  << std::endl;
-            JacobiSVD<MatrixXf> svd(*A_cpu, ComputeThinU | ComputeThinV);
-            //std::cout << "estimatedPose-2 "  << std::endl;
-            x = svd.solve(*b_cpu);
-            //std::cout << "estimatedPose-3 "  << std::endl;
+
+            //JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            //x = svd.solve(atb_cpu);
+
+             x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
+
+//            //x = ata_cpu.llt().solve(atb_cpu);
+//
+//            //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
+
+//            // @TODO: Chck if correc,  Shouldn't we do A.data() and b.data()
+//            CUDA_CALL(cudaMemcpy(A_cpu, A->data(), sizeof(Matrix<float, N_FIXED, 6>), cudaMemcpyDeviceToHost));
+//            CUDA_CALL(cudaMemcpy(b_cpu, b->data(), sizeof(Matrix<float, N_FIXED, 1>), cudaMemcpyDeviceToHost));
+//
+//            // Solve the system
+//            VectorXf x(6);
+//            //std::cout << "estimatedPose-1 "  << std::endl;
+//            JacobiSVD<MatrixXf> svd(*A_cpu, ComputeThinU | ComputeThinV);
+//            //std::cout << "estimatedPose-2 "  << std::endl;
+//            x = svd.solve(*b_cpu);
+//            //std::cout << "estimatedPose-3 "  << std::endl;
 
             float alpha = x(0), beta = x(1), gamma = x(2);
 
@@ -299,18 +416,23 @@ public:
             std::cout << "Optimization iteration done." << std::endl;
         }
 
-        CUDA_CALL(cudaFree(A));
-        CUDA_CALL(cudaFree(b));
-        CUDA_CALL(cudaFree(estimatedPose));
-
-        free(A_cpu);
-        free(b_cpu);
+//        CUDA_CALL(cudaFree(A));
+//        CUDA_CALL(cudaFree(b));
+//
+//
+//        free(A_cpu);
+//        free(b_cpu);
         // @TODO: See how can we free this pointer??  do  we need to?
         return *estimatedPose_cpu;
     }
 
 private:
-    bool test;
+    Matrix4f *estimatedPose; // device memory
+    Matrix<float,6,6> *atas; // On device memory
+    Matrix<float,6,1> *atbs; // On device memory
+    Vector3f *transformedVertices; // On device memory
+    Vector3f *transformedNormals;  // On device memory
+    cudaStream_t stream;
 };
 
 __global__ void computeAtbs(const float *currentDepthMap,
@@ -388,6 +510,9 @@ __global__ void computeAtbs(const float *currentDepthMap,
 
                 double b = n[0] * d[0] + n[1] * d[1] + n[2] * d[2] - n[0] * s[0] - n[1] * s[1] - n[2] * s[2];
 
+                ata[idx] = at * at.transpose();
+                atb[idx] = at * b;
+
 //                at[0] = s.z() * n.y() - s.y() * n.z();
 //                at[1] = s.x() * n.z() - s.z() * n.x();
 //                at[2] = s.y() * n.x() - s.x() * n.y();
@@ -396,13 +521,16 @@ __global__ void computeAtbs(const float *currentDepthMap,
 //                at[5] = n.z();
 //
 //                double b = n.dot(d - s);
-
-                ata[idx] = at * at.transpose();
-
-                atb[idx] = at * b;
             } else {
                 ata[idx] = Matrix<double,6,6>::Zero();
                 atb[idx] = Matrix<double,6,1>::Zero();
+            }
+
+            for (int i=0;i<6;i++) {
+                atb[idx](i) = 0;
+                for (int j=0;j<6;j++) {
+                    ata[idx](i,j) = 0;
+                }
             }
         }
     }
@@ -499,8 +627,8 @@ public:
             Matrix<double,6,6> ata_cpu = Matrix<double,6,6>::Zero();
             Matrix<double,6,1> atb_cpu = Matrix<double,6,1>::Zero();
 
-            CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<double,6,6>),cudaMemcpyDeviceToHost,stream));
-            CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<double,6,1>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(&ata_cpu,(ata + N)->data(),sizeof(Matrix<double,6,6>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(&atb_cpu,(atb + N)->data(),sizeof(Matrix<double,6,1>),cudaMemcpyDeviceToHost,stream));
 
 
 
@@ -512,7 +640,6 @@ public:
             x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
 
             //x = ata_cpu.llt().solve(atb_cpu);
-
             //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
 
             float alpha = x(2), beta = x(0), gamma = x(1);
