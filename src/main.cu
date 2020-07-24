@@ -26,7 +26,7 @@ struct VertexMipMap {
 
 
 #define USE_GPU_ICP	1
-#define USE_REDUCTION_ICP 1
+#define USE_REDUCTION_ICP 0
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -54,7 +54,7 @@ int reconstructRoom() {
 	    if(USE_REDUCTION_ICP) {
 	        optimizer = new LinearICPCubOptimizer(depthFrameWidth,depthFrameHeight);
 	    } else {
-            optimizer = new LinearICPCudaOptimizer();
+            optimizer = new LinearICPCudaOptimizer(depthFrameWidth,depthFrameHeight);
 	    }
 	}
 	else {
@@ -120,6 +120,7 @@ int reconstructRoom() {
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
     Matrix4f *cuda4fIdentity;
+
     CUDA_CALL(cudaMalloc((void **) &cuda4fIdentity, sizeof(Matrix4f)));
     CUDA_CALL(cudaMemcpy(cuda4fIdentity, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
@@ -127,7 +128,7 @@ int reconstructRoom() {
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
 	int i = 0;
-	const int iMax = 3;
+	const int iMax = 4;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -207,6 +208,7 @@ int reconstructRoom() {
 
 		// if (i % 5 == 0) {
 		if (i > 0) {
+		    std::cout << "Saving mesh ..." << std::endl;
             // We write out the mesh to file for debugging.
             SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
             SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
