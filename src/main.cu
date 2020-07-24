@@ -173,7 +173,7 @@ int reconstructRoom() {
         currentCameraToWorld = currentFrameToPreviousFrame * currentCameraToWorld;
 
 		//// Step 3:  Volumetric Grid Fusion
-		// @TODO: copy  currentCameraToWorld  to gpu
+		// currentCameraToWorld is on CPU
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
 
         // Step 4: Ray-Casting
@@ -182,7 +182,7 @@ int reconstructRoom() {
 		        currentFrame.g_normals,
 		        currentCameraToWorld,
                 depthFrameWidth,
-                depthFrameWidth);
+                depthFrameHeight);
 
 		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]

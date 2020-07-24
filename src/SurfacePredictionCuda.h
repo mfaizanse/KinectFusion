@@ -72,7 +72,7 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                  const int voxel_grid_dim_z,
                  const float voxel_size, // size of each voxel
                  const float trunc_margin,
-                 const Matrix4f& pose,
+                 const Matrix4f *pose,
                  const Matrix3f *intrinsics,
                  const size_t width,
                  const size_t height,
@@ -85,10 +85,11 @@ void raycastTSDF(const float* voxel_grid_TSDF,
 
     //Terminate all un-necessary threads
     if (idx >= N) {
+        printf("a01-ending\n");
         return;
     }
 
-    // initialize the point and its normal
+    // Initialize the point and its normal
     g_vertex[idx] = Vector3f(-MINF,-MINF,-MINF);
     g_normal[idx] = Vector3f(-MINF,-MINF,-MINF);
 
@@ -96,12 +97,13 @@ void raycastTSDF(const float* voxel_grid_TSDF,
     int x = idx / width;
     int y = idx % width;
 
-    Matrix3f rotation = pose.block(0, 0, 3, 3);
-    Vector3f translation = pose.block(0, 3, 3, 1);
+    Matrix3f rotation = (*pose).block(0, 0, 3, 3);
+    Vector3f translation = (*pose).block(0, 3, 3, 1);
 
     const Vector3f volume_range = Vector3f(voxel_grid_dim_x * voxel_size,
                                            voxel_grid_dim_y * voxel_size,
                                            voxel_grid_dim_z * voxel_size);
+
 
     // @TODO: recheck it
     const Vector3f pixel_position(
@@ -113,19 +115,22 @@ void raycastTSDF(const float* voxel_grid_TSDF,
     ray_direction.normalize();
 
     float ray_length = fmax(get_min_time(volume_range, translation, ray_direction), 0.f);
-    if(ray_length >= get_max_time(volume_range, translation, ray_direction))
+    if(ray_length >= get_max_time(volume_range, translation, ray_direction)) {
         return;
+    }
 
     // @TODO: is voxel_scale == voxel_size????
     ray_length += voxel_size;
+
     Vector3f grid = (translation + (ray_direction * ray_length)) / voxel_size;
 
     // calculate index of grid in volume
     int volume_idx1 =
             (__float2int_rd(grid(2)) * voxel_grid_dim_y * voxel_grid_dim_x) + (__float2int_rd(grid(1)) * voxel_grid_dim_x) + __float2int_rd(grid(0));
-    float tsdf = voxel_grid_TSDF[volume_idx1];
 
-//    float tsdf = voxel_grid_TSDF[__float2int_rd(grid(0)) + __float2int_rd(grid(1)) * volume_size.y() + __float2int_rd(grid(2)) * volume_size.z()];
+    // printf("%f-%f-%f-%d\n", grid(2), grid(1), grid(0), volume_idx1);
+
+    float tsdf = voxel_grid_TSDF[volume_idx1];
 
     const float max_search_length = ray_length + volume_range.x() * sqrt(2.f);
     for(;ray_length < max_search_length; ray_length += trunc_margin * 0.5f){
@@ -155,6 +160,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 location_in_grid.z() < 1 || location_in_grid.z() >= voxel_grid_dim_z -1) {
                 break;
             }
+
+            printf("FOUND CROSSING... \n");
 
             Vector3f normal, shifted;
 
@@ -220,10 +227,12 @@ public:
     SurfacePredictionCuda(Matrix3f* intrinsics_gpu, cudaStream_t stream = 0) {
         intrinsics = intrinsics_gpu;
         this->stream = stream;
+
+        CUDA_CALL(cudaMalloc((void **) &pose_gpu, sizeof(Matrix4f)));
     }
 
     ~SurfacePredictionCuda() {
-
+        CUDA_CALL(cudaFree(pose_gpu));
     }
 
     void predict(const VolumetricGridCuda& volume,
@@ -234,6 +243,12 @@ public:
                size_t height
                ) {
 
+        // copy pose to gpu
+        CUDA_CALL(cudaMemcpy(pose_gpu, pose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
+        std::cout << "Surface Prediction ... " << std::endl;
+        clock_t begin = clock();
+
         const size_t N = width * height;
 
         raycastTSDF<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream>>>(
@@ -243,7 +258,7 @@ public:
                 volume.voxel_grid_dim_z,
                 volume.voxel_size,
                 volume.trunc_margin,
-                pose,
+                pose_gpu,
                 intrinsics,
                 width,
                 height,
@@ -254,11 +269,17 @@ public:
 
         CUDA_CHECK_ERROR
 
-        cudaThreadSynchronize();
+        // Wait for GPU to finish before accessing on host
+        cudaDeviceSynchronize();
+
+        clock_t end = clock();
+        double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
+        std::cout << "Surface Prediction Completed in " << elapsedSecs << " seconds." << std::endl;
 
     }
 
 private:
     Matrix3f* intrinsics;
     cudaStream_t stream;
+    Matrix4f* pose_gpu;
 };
