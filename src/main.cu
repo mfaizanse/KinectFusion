@@ -1,12 +1,17 @@
 #include <iostream>
 #include <fstream>
-
 #include "Eigen.h"
 #include "VirtualSensor.h"
 #include "SimpleMesh.h"
 #include "SurfaceMeasurement.h"
+#include "SurfacePredictionCuda.h"
 #include "CudaICPOptimizer.h"
 #include "BilateralFilter.h"
+#include "MipMap.h"
+#include "VolumetricGridCuda.h"
+
+#define USE_GPU_ICP	1
+#define USE_REDUCTION_ICP 0
 
 struct DepthMipMap {
     float *depthMap;
@@ -20,14 +25,6 @@ struct VertexMipMap {
     size_t width;
     size_t height;
 };
-
-#include "MipMap.h"
-#include "VolumetricGridCuda.h"
-#include "SurfacePrediction.h"
-
-
-#define USE_GPU_ICP	1
-#define USE_REDUCTION_ICP 0
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -93,6 +90,7 @@ int reconstructRoom() {
 
     SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
     VolumetricGridCuda volumetricGrid(cudaDepthIntrinsics,  &base_pose_cpu);
+    SurfacePredictionCuda surfacePrediction(cudaDepthIntrinsics, 0);
 
     // Defining memory for previous and current frames,  [on Device memory]
     FrameData previousFrame;

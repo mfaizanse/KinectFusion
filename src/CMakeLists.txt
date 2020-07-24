@@ -65,6 +65,7 @@ set(HEADER_FILES
     CudaError.h
     Macros.h
     SurfaceMeasurement.h
+    SurfacePredictionCuda.h
     ICPOptimizer.h
     CudaICPOptimizer.h BilateralFilter.h MipMap.h VolumetricGridCuda.h)
 
