@@ -80,7 +80,7 @@ __global__ void getCorrespondences(
         return;
     }
 
-    bool isCorrespondenceFound = false;
+    // bool isCorrespondenceFound = false;
 
     Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
     Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
@@ -121,7 +121,7 @@ __global__ void getCorrespondences(
 
             if (distance <= distanceThreshold && angle <= angleThreshold) {
                 // @TODO: Correct  match, add  this to matches  list
-                isCorrespondenceFound = true;
+                //isCorrespondenceFound = true;
 
                 Vector3f s = currentVertices[id2];
                 Vector3f d = previousVertices[idx];

@@ -13,11 +13,7 @@
 #define USE_GPU_ICP	1
 #define USE_REDUCTION_ICP 0
 
-struct DepthMipMap {
-    float *depthMap;
-    size_t width;
-    size_t height;
-};
+
 
 struct VertexMipMap {
     Vector3f *vertices;
@@ -181,10 +177,12 @@ int reconstructRoom() {
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
 
         // Step 4: Ray-Casting
-		SurfacePrediction::surface_prediction(volumetricGrid,
-		        currentFrame.g_vertices, currentFrame.g_normals,
-		        depthIntrinsics,
-		        currentCameraToWorld);
+        surfacePrediction.predict(volumetricGrid,
+		        currentFrame.g_vertices,
+		        currentFrame.g_normals,
+		        currentCameraToWorld,
+                depthFrameWidth,
+                depthFrameWidth);
 
 		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
@@ -200,9 +198,10 @@ int reconstructRoom() {
 		*tmp4fMat_cpu = currentCameraPose * *tmp4fMat_cpu;
         CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, (*tmp4fMat_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
+        // IMPORTANT QUESTIONS: I THINK WE DONT NEED TO DO IT NOW WHEN WE ARE DOING THE RAYCASTING
         // @TODO: Step 6: Transform all points and normals to new camera pose
         // IMPORTANT STEP  MISSING
-        transformHelper.transformCurrentFrameVertices(currentFrame, currentFrame.globalCameraPose);
+        ///// transformHelper.transformCurrentFrameVertices(currentFrame, currentFrame.globalCameraPose);
 
         // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data

@@ -5,35 +5,46 @@
 #include "device_launch_parameters.h"
 #include "VolumetricGridCuda.h"
 
-//#define BLOCKSIZE 1024
-
-
 __device__ __forceinline__
-float interpolate_trilinearly(const Vector3f& point, const float* volume, const Vector3i& volume_size, const float voxel_scale){
+float interpolate_trilinearly(const Vector3f& point,
+                              const float* volume,
+                              const int voxel_grid_dim_x,
+                              const int voxel_grid_dim_y,
+                              const int voxel_grid_dim_z){
+
     Vector3i point_in_grid = point.cast<int>();
 
-    const float vx = (static_cast<float>(point_in_grid.x()) + 0.5f);
-    const float vy = (static_cast<float>(point_in_grid.y()) + 0.5f);
-    const float vz = (static_cast<float>(point_in_grid.z()) + 0.5f);
+    const int x0 = round(point.x());
+    const int y0 = round(point.y());
+    const int z0 = round(point.y());
 
-    point_in_grid.x() = (point.x() < vx) ? (point_in_grid.x() - 1) : point_in_grid.x();
-    point_in_grid.y() = (point.y() < vy) ? (point_in_grid.y() - 1) : point_in_grid.y();
-    point_in_grid.z() = (point.z() < vz) ? (point_in_grid.z() - 1) : point_in_grid.z();
+    const int x1 = (x0 > point.x()) ? x0 - 1 : x0 + 1;
+    const int y1 = (y0 > point.y()) ? y0 - 1 : y0 + 1;
+    const int z1 = (z0 > point.z()) ? z0 - 1 : z0 + 1;
 
-    const float a = (point.x() - (static_cast<float>(point_in_grid.x()) + 0.5f));
-    const float b = (point.y() - (static_cast<float>(point_in_grid.y()) + 0.5f));
-    const float c = (point.z() - (static_cast<float>(point_in_grid.z()) + 0.5f));
+    const float xd = (point.x() - x0) / (x1 - x0);
+    const float yd = (point.y() - y0) / (y1 - y0);
+    const float zd = (point.z() - z0) / (z1 - z0);
 
-    return static_cast<float>(volume[point_in_grid.x() * volume_size.x() + point_in_grid.y() * volume_size.y() + point_in_grid.z() * volume_size.z()]) * (1 - a) * (1 - b) * (1 - c) +
-           static_cast<float>(volume[point_in_grid.x() * volume_size.x() + point_in_grid.y() * volume_size.y() + (point_in_grid.z() + 1) * volume_size.z()]) * (1 - a) * (1 - b) * c +
-           static_cast<float>(volume[point_in_grid.x() * volume_size.x() + (point_in_grid.y() + 1) * volume_size.y() + point_in_grid.z() * volume_size.z()]) * (1 - a) * b * (1 - c) +
-           static_cast<float>(volume[point_in_grid.x() * volume_size.x() + (point_in_grid.y() + 1) * volume_size.y() + (point_in_grid.z() + 1) * volume_size.z()]) * (1 - a) * b * c +
-           static_cast<float>(volume[(point_in_grid.x() + 1) * volume_size.x() + point_in_grid.y() * volume_size.y() + point_in_grid.z() * volume_size.z()]) * a * (1 - b) * (1 - c) +
-           static_cast<float>(volume[(point_in_grid.x() + 1) * volume_size.x() + point_in_grid.y() * volume_size.y() + (point_in_grid.z() + 1) * volume_size.z()]) * a * (1 - b) * c +
-           static_cast<float>(volume[(point_in_grid.x() + 1) * volume_size.x() + (point_in_grid.y() + 1) * volume_size.y() + point_in_grid.z() * volume_size.z()]) * a * b * (1 - c) +
-           static_cast<float>(volume[(point_in_grid.x() + 1) * volume_size.x() + point_in_grid.y() * volume_size.y() + (point_in_grid.z() + 1) * volume_size.z()]) * a * b * c;
+    // @TODO: Check the indexing, its different in our case
+    const float c000 = volume[x0 + y0 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c001 = volume[x1 + y0 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c010 = volume[x0 + y1 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c011 = volume[x1 + y1 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c100 = volume[x0 + y0 * (voxel_grid_dim_y-1) + z1 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c101 = volume[x1 + y0 * (voxel_grid_dim_y-1) + z1 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c110 = volume[x1 + y1 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const float c111 = volume[x1 + y1 * (voxel_grid_dim_y-1) + z1 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
 
+    const float c00 = c000 * (1 - xd) + c100 * xd;
+    const float c01 = c001 * (1 - xd) + c101 * xd;
+    const float c10 = c010 * (1 - xd) + c110 * xd;
+    const float c11 = c011 * (1 - xd) + c111 * xd;
 
+    const float c0 = c00 * (1 - yd) + c10 * yd;
+    const float c1 = c01 * (1 - yd) + c11 * yd;
+
+    return c0 * (1 - zd) + c1 * zd;
 }
 
 __device__ __forceinline__
@@ -77,16 +88,25 @@ void raycastTSDF(const float* voxel_grid_TSDF,
         return;
     }
 
-    int x = 2;
-    int y = 3;
+    // initialize the point and its normal
+    g_vertex[idx] = Vector3f(-MINF,-MINF,-MINF);
+    g_normal[idx] = Vector3f(-MINF,-MINF,-MINF);
 
-    const Vector3f volume_range = Vector3f(volume_size.x() * voxel_scale,
-                                           volume_size.y() * voxel_scale,
-                                           volume_size.z() * voxel_scale);
+    // Get (x,y) of pixel
+    int x = idx / width;
+    int y = idx % width;
 
+    Matrix3f rotation = pose.block(0, 0, 3, 3);
+    Vector3f translation = pose.block(0, 3, 3, 1);
+
+    const Vector3f volume_range = Vector3f(voxel_grid_dim_x * voxel_size,
+                                           voxel_grid_dim_y * voxel_size,
+                                           voxel_grid_dim_z * voxel_size);
+
+    // @TODO: recheck it
     const Vector3f pixel_position(
-            (x - cam_parameters(0,2)) / cam_parameters(0,0),
-            (y - cam_parameters(1,2)) / cam_parameters(1,1),
+            (x - (*intrinsics)(0,2)) / (*intrinsics)(0,0),
+            (y - (*intrinsics)(1,2)) / (*intrinsics)(1,1),
             1.f);
 
     Vector3f ray_direction = (rotation * pixel_position);
@@ -96,77 +116,87 @@ void raycastTSDF(const float* voxel_grid_TSDF,
     if(ray_length >= get_max_time(volume_range, translation, ray_direction))
         return;
 
-    ray_length += voxel_scale;
-    Vector3f grid = (translation + (ray_direction * ray_length)) / voxel_scale;
+    // @TODO: is voxel_scale == voxel_size????
+    ray_length += voxel_size;
+    Vector3f grid = (translation + (ray_direction * ray_length)) / voxel_size;
 
-    auto tsdf = static_cast<float>(tsdf_volume[__float2int_rd(grid(0)) + __float2int_rd(grid(1)) * volume_size.y() + __float2int_rd(grid(2)) * volume_size.z()]);
+    // calculate index of grid in volume
+    int volume_idx1 =
+            (__float2int_rd(grid(2)) * voxel_grid_dim_y * voxel_grid_dim_x) + (__float2int_rd(grid(1)) * voxel_grid_dim_x) + __float2int_rd(grid(0));
+    float tsdf = voxel_grid_TSDF[volume_idx1];
+
+//    float tsdf = voxel_grid_TSDF[__float2int_rd(grid(0)) + __float2int_rd(grid(1)) * volume_size.y() + __float2int_rd(grid(2)) * volume_size.z()];
 
     const float max_search_length = ray_length + volume_range.x() * sqrt(2.f);
-    for(;ray_length < max_search_length; ray_length += truncation_distance * 0.5f){
-        grid = ((translation + (ray_direction * (ray_length + truncation_distance * 0.5f))) / voxel_scale);
+    for(;ray_length < max_search_length; ray_length += trunc_margin * 0.5f){
+        grid = ((translation + (ray_direction * (ray_length + trunc_margin * 0.5f))) / voxel_size);
 
-        if (grid.x() < 1 || grid.x() >= volume_size.x() - 1 ||
-            grid.y() < 1 || grid.y() >= volume_size.y() -1 ||
-            grid.z() < 1 || grid.z() >= volume_size.z() - 1)
+        if (grid.x() < 1 || grid.x() >= voxel_grid_dim_x - 1 ||
+            grid.y() < 1 || grid.y() >= voxel_grid_dim_y -1 ||
+            grid.z() < 1 || grid.z() >= voxel_grid_dim_z - 1)
             continue;
 
+        volume_idx1 =
+                (__float2int_rd(grid(2)) * voxel_grid_dim_y * voxel_grid_dim_x) + (__float2int_rd(grid(1)) * voxel_grid_dim_x) + __float2int_rd(grid(0));
+
         const float previous_tsdf = tsdf;
-        tsdf = static_cast<float>(tsdf_volume[__float2int_rd(grid(0)) + __float2int_rd(grid(1)) * volume_size.y() + __float2int_rd(grid(2)) * volume_size.z()]);
+        tsdf = voxel_grid_TSDF[volume_idx1];
 
         if (previous_tsdf < 0.f && tsdf > 0.f)
             break;
         if (previous_tsdf > 0.f && tsdf < 0.f) {
-            const float t_star = ray_length - truncation_distance * 0.5f * previous_tsdf / (tsdf - previous_tsdf);
+            const float t_star = ray_length - trunc_margin * 0.5f * previous_tsdf / (tsdf - previous_tsdf);
 
             const auto vertex = translation + ray_direction * t_star;
 
-            const Vector3f location_in_grid = (vertex / voxel_scale);
-            if (location_in_grid.x() < 1 || location_in_grid.x() >= volume_size.x() - 1 ||
-                location_in_grid.y() < 1 || location_in_grid.y() >= volume_size.y() - 1 ||
-                location_in_grid.z() < 1 || location_in_grid.z() >= volume_size.z() -1)
+            const Vector3f location_in_grid = (vertex / voxel_size);
+            if (location_in_grid.x() < 1 || location_in_grid.x() >= voxel_grid_dim_x - 1 ||
+                location_in_grid.y() < 1 || location_in_grid.y() >= voxel_grid_dim_y - 1 ||
+                location_in_grid.z() < 1 || location_in_grid.z() >= voxel_grid_dim_z -1) {
                 break;
+            }
 
             Vector3f normal, shifted;
 
             shifted = location_in_grid;
             shifted.x() += 1;
-            if (shifted.x() >= volume_size.x() -1)
+            if (shifted.x() >= voxel_grid_dim_x - 1)
                 break;
-            const float Fx1 = interpolate_trilinearly(shifted, tsdf_volume, volume_size, voxel_scale);
+            const float Fx1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.x() -= 1;
             if (shifted.x() < 1)
                 break;
-            const float Fx2 = interpolate_trilinearly(shifted, tsdf_volume, volume_size, voxel_scale);
+            const float Fx2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.x() = (Fx1 - Fx2);
 
             shifted = location_in_grid;
             shifted.y() += 1;
-            if (shifted.y() >= volume_size.y() -1)
+            if (shifted.y() >= voxel_grid_dim_y - 1)
                 break;
-            const float Fy1 = interpolate_trilinearly(shifted, tsdf_volume, volume_size, voxel_scale);
+            const float Fy1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.y() -= 1;
             if (shifted.y() < 1)
                 break;
-            const float Fy2 = interpolate_trilinearly(shifted, tsdf_volume, volume_size, voxel_scale);
+            const float Fy2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.y() = (Fy1 - Fy2);
 
             shifted = location_in_grid;
             shifted.z() += 1;
-            if (shifted.z() >= volume_size.z() -1)
+            if (shifted.z() >= voxel_grid_dim_z - 1)
                 break;
-            const float Fz1 = interpolate_trilinearly(shifted, tsdf_volume, volume_size, voxel_scale);
+            const float Fz1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.z() -= 1;
             if (shifted.z() < 1)
                 break;
-            const float Fz2 = interpolate_trilinearly(shifted, tsdf_volume, volume_size, voxel_scale);
+            const float Fz2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.z() = (Fz1 - Fz2);
 
@@ -174,8 +204,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 break;
 
             normal.normalize();
-            g_vertex[y*640 + x] = Vector3f(vertex.x(), vertex.y(), vertex.z());
-            g_normal[y*640 + x] = Vector3f(normal.x(), normal.y(), normal.z());
+            g_vertex[idx] = Vector3f(vertex.x(), vertex.y(), vertex.z());
+            g_normal[idx] = Vector3f(normal.x(), normal.y(), normal.z());
 
             break;
         }
@@ -197,12 +227,12 @@ public:
     }
 
     void predict(const VolumetricGridCuda& volume,
-                                   Vector3f* g_vertices,
-                                   Vector3f* g_normals,
-                                   const Matrix4f& pose,
-                                   size_t width,
-                                   size_t height
-                                   ) {
+               Vector3f* g_vertices,
+               Vector3f* g_normals,
+               const Matrix4f& pose,
+               size_t width,
+               size_t height
+               ) {
 
         const size_t N = width * height;
 
