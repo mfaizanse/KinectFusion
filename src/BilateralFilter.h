@@ -5,7 +5,7 @@
 
 #define BLOCKSIZE 1024
 
-#define SKIP_FILTER 1
+#define SKIP_FILTER 0
 
 /*
  * Inline this function for better readability
@@ -23,14 +23,16 @@ __device__ __forceinline__ float fancyN(float sigma, float t) {
  * Parameter Wp is now computed alongside, still not sure if this is correct
  */
 __device__ float
-computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, size_t width, size_t N) {
+computeDk(float *depthMap, long u, long v, float sigma_s, float sigma_r, size_t width, size_t N) {
     float sum = 0.0f;
     float sum2 = 0.0f;
 
+    size_t idx = u * width + v;
+
     //Use a 3x3 grid as the smoothing kernel
     for (size_t i = 0; i < 9; i++) {
-        int u2 = u + (i/3) - 1;
-        int v2 = v + (i%3) - 1;
+        long u2 = u + (i/3) - 1;
+        long v2 = v + (i%3) - 1;
         //Skip depth measurements over the edges of the image
         if(u2 < 0 || v2 < 0 || u2 == width || v2 == (N/width)){
             continue;
@@ -40,20 +42,19 @@ computeDk(float *depthMap, size_t u, size_t v, float sigma_s, float sigma_r, siz
             continue;
         }
         //Distance between pixels
-        float t1 = sqrt(pow(u - u2, 2) + pow(v - v2, 2));
+        float t1 = sqrt(pow(static_cast<float>(u2 - u), 2) + pow(static_cast<float>(v2 - v), 2));
         //Difference of depth measurements
-        float t2 = abs(depthMap[u * width + v] - depthMap[i]);
+        float t2 = abs(depthMap[u2 * width + v2] - depthMap[idx]);
         //Smoothing factor
         float fn_s = fancyN(sigma_s, t1);
         //Range factor
         float fn_r = fancyN(sigma_r, t2);
         //Weight
         float w = fn_s * fn_r;
-        sum += w * depthMap[i];
+        sum += w * depthMap[idx];
         //Normalizing factor
         sum2 += w;
     }
-
     //Return normalized result
     return sum / sum2;
 }
@@ -74,10 +75,11 @@ __global__ void bilateralFilter(float *depthMap, float *filteredMap, float sigma
         return;
     }
 
-    if(depthMap[idx] <= 0) {
+    if(depthMap[idx] <= 0 || depthMap[idx] == NAN) {
         filteredMap[idx] = depthMap[idx];
     } else {
-        filteredMap[idx] = computeDk(depthMap,u,v,sigma_s,sigma_r,width,N);
+        float f = computeDk(depthMap,u,v,sigma_s,sigma_r,width,N);
+        filteredMap[idx] = f;
     }
 }
 

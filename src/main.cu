@@ -28,6 +28,7 @@ struct VertexMipMap {
 #define USE_GPU_ICP	1
 #define USE_REDUCTION_ICP 0
 
+
 int reconstructRoom() {
     // Setup virtual sensor
 	std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
@@ -127,6 +128,12 @@ int reconstructRoom() {
     Matrix4f *tmp4fMat_cpu;
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
+    cudaEvent_t start, stop;
+    float elapsedTime;
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
 	int i = 0;
 	const int iMax = 4;
 	while (sensor.processNextFrame() && i < iMax) {
@@ -136,13 +143,26 @@ int reconstructRoom() {
 		// Copy depth map to current frame, device memory
         CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
+        cudaEventRecord(start);
         BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        cudaEventElapsedTime(&elapsedTime, start,stop);
+        printf("Filter depthmap elapsed time : %f ms\n" ,elapsedTime);
 
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
+
+        cudaEventRecord(start);
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
                                             currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        cudaEventElapsedTime(&elapsedTime, start,stop);
+        printf("Surface measurement elapsed time : %f ms\n" ,elapsedTime);
 
         ///// Debugging code  start
         //// We write out the mesh to file for debugging.
@@ -168,7 +188,14 @@ int reconstructRoom() {
             if (USE_GPU_ICP)  {
                 // The arguments should be on device memory
                 // The returned pose matrix will be on host memory
+                cudaEventRecord(start);
                 currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
+
+                cudaEventRecord(stop);
+                cudaEventSynchronize(stop);
+
+                cudaEventElapsedTime(&elapsedTime, start,stop);
+                printf("ICP elapsed time : %f ms\n" ,elapsedTime);
             }
             else {
                 // currentCameraToWorld = optimizer->estimatePose(depthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
@@ -178,7 +205,15 @@ int reconstructRoom() {
 
 		//// Step 3:  Volumetric Grid Fusion
 		// @TODO: copy  currentCameraToWorld  to gpu
+		cudaEventRecord(start);
+
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
+
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        cudaEventElapsedTime(&elapsedTime, start,stop);
+        printf("Volumetric fusion elapsed time : %f ms\n" ,elapsedTime);
 
 		// Step 4: Ray-Casting
 
