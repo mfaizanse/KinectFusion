@@ -120,6 +120,7 @@ int reconstructRoom() {
     CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
     Matrix4f *cuda4fIdentity;
+
     CUDA_CALL(cudaMalloc((void **) &cuda4fIdentity, sizeof(Matrix4f)));
     CUDA_CALL(cudaMemcpy(cuda4fIdentity, currentCameraToWorld.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
@@ -127,7 +128,7 @@ int reconstructRoom() {
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
 	int i = 0;
-	const int iMax = 3;
+	const int iMax = 2;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -206,19 +207,19 @@ int reconstructRoom() {
         currentFrame = tmpFrame;
 
 		// if (i % 5 == 0) {
-		if (i > 0) {
-            // We write out the mesh to file for debugging.
-            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
-            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
-
-            std::stringstream ss;
-            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
-            if (!resultingMesh.writeMesh(ss.str())) {
-                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-                return -1;
-            }
-		}
+//		if (i > 0) {
+//            // We write out the mesh to file for debugging.
+//            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
+//            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
+//            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
+//
+//            std::stringstream ss;
+//            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
+//            if (!resultingMesh.writeMesh(ss.str())) {
+//                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+//                return -1;
+//            }
+//		}
 
 		i++;
 	}

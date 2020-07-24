@@ -101,7 +101,7 @@ __global__ void getCorrespondences(
     }
 }
 
-__global__ void transformVerticesAndNormas(
+__global__ void transformVerticesAndNormals(
         const Vector3f *vertices,
         const Vector3f *normals,
         const Matrix4f *pose,
@@ -157,7 +157,7 @@ public:
     ~TransformHelper() {}
 
     void transformCurrentFrameVertices(FrameData& currentFrame, const Matrix4f* pose) {
-        transformVerticesAndNormas<<<(N_FIXED + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+        transformVerticesAndNormals<<<(N_FIXED + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                 currentFrame.g_vertices,
                 currentFrame.g_normals,
                 pose,
@@ -224,7 +224,7 @@ public:
             clock_t begin = clock();
 
             // @TODO: Transform points and normals.  IMPORTANT
-            transformVerticesAndNormas<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+            transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
                     estimatedPose,
@@ -378,14 +378,24 @@ __global__ void computeAtbs(const float *currentDepthMap,
                 Vector3f d = previousVertices[idx];
                 Vector3f n = previousNormals[idx];
 
-                at[0] = s.z() * n.y() - s.y() * n.z();
-                at[1] = s.x() * n.z() - s.z() * n.x();
-                at[2] = s.y() * n.x() - s.x() * n.y();
-                at[3] = n.x();
-                at[4] = n.y();
-                at[5] = n.z();
+                // Add the point-to-plane constraints to the system
+                at(1) = n[0] * s[2] - n[2] * s[0];
+                at(0) = n[2] * s[1] - n[1] * s[2];
+                at(2) = n[1] * s[0] - n[0] * s[1];
+                at(3) = n[0];
+                at(4) = n[1];
+                at(5) = n[2];
 
-                double b = n.dot(d - s);
+                double b = n[0] * d[0] + n[1] * d[1] + n[2] * d[2] - n[0] * s[0] - n[1] * s[1] - n[2] * s[2];
+
+//                at[0] = s.z() * n.y() - s.y() * n.z();
+//                at[1] = s.x() * n.z() - s.z() * n.x();
+//                at[2] = s.y() * n.x() - s.x() * n.y();
+//                at[3] = n.x();
+//                at[4] = n.y();
+//                at[5] = n.z();
+//
+//                double b = n.dot(d - s);
 
                 ata[idx] = at * at.transpose();
 
@@ -424,8 +434,11 @@ public:
         CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
 
         //Set up cub temp memory beforehand, should be the same for every frame
-        cub::DeviceReduce::Sum(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, stream);
-        cub::DeviceReduce::Sum(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, stream);
+        cub::DeviceReduce::Reduce(d_temp_storage_ata, temp_storage_bytes_ata, ata, ata + N, N, customAdd, Matrix<double,6,6>::Zero(), stream);
+        cub::DeviceReduce::Reduce(d_temp_storage_atb, temp_storage_bytes_atb, atb, atb + N, N, customAdd, Matrix<double,6,1>::Zero(), stream);
+
+        std::cout << "temp_storage_bytes_ata: " << temp_storage_bytes_ata << std::endl;
+        std::cout << "temp_storage_bytes_atb: " << temp_storage_bytes_atb << std::endl;
 
         CUDA_CALL(cudaMalloc(&d_temp_storage_ata, temp_storage_bytes_ata));
         CUDA_CALL(cudaMalloc(&d_temp_storage_atb, temp_storage_bytes_atb));
@@ -439,11 +452,12 @@ public:
 
         CUDA_CALL(cudaMemcpyAsync(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost, stream));
 
+
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
             std::cout << "Matching points ... Iteration: " << i << std::endl;
 
-            transformVerticesAndNormas<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(
+            transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
                     estimatedPose,
@@ -480,13 +494,15 @@ public:
 
             CUDA_CHECK_ERROR
 
+            cudaDeviceSynchronize();
+
             Matrix<double,6,6> ata_cpu = Matrix<double,6,6>::Zero();
             Matrix<double,6,1> atb_cpu = Matrix<double,6,1>::Zero();
 
             CUDA_CALL(cudaMemcpyAsync(&ata_cpu,ata + N,sizeof(Matrix<double,6,6>),cudaMemcpyDeviceToHost,stream));
             CUDA_CALL(cudaMemcpyAsync(&atb_cpu,atb + N,sizeof(Matrix<double,6,1>),cudaMemcpyDeviceToHost,stream));
 
-            cudaDeviceSynchronize();
+
 
             VectorXd x(6);
 
