@@ -183,7 +183,7 @@ public:
     }
 
     void integrateFrame(Matrix4f* current_pose, const FrameData& currentFrame) {
-        std::cout << "Fusing into Volumetric Grid... " << std::endl;
+        // std::cout << "Fusing into Volumetric Grid... " << std::endl;
         clock_t begin = clock();
 
         Matrix4f* current_pose_gpu;
@@ -215,7 +215,7 @@ public:
 
         clock_t end = clock();
         double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Fusing Completed in " << elapsedSecs << " seconds." << std::endl;
+        //std::cout << "Fusing Completed in " << elapsedSecs << " seconds." << std::endl;
     }
 
     // Compute surface points from TSDF voxel grid and save points to point cloud file

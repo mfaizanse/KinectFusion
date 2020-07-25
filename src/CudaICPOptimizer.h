@@ -120,7 +120,7 @@ __global__ void getCorrespondences(
             angle = acos(angle);
 
             if (distance <= distanceThreshold && angle <= angleThreshold) {
-                // @TODO: Correct  match, add  this to matches  list
+                // Correct  match, add  this to matches  list
                 //isCorrespondenceFound = true;
 
                 Vector3f s = currentVertices[id2];
@@ -130,9 +130,13 @@ __global__ void getCorrespondences(
                 Matrix<float,6,1> at;
 
                 // Add the point-to-plane constraints to the system
-                at(0) = n[2] * s[1] - n[1] * s[2];
-                at(1) = n[0] * s[2] - n[2] * s[0];
-                at(2) = n[1] * s[0] - n[0] * s[1];
+                auto t1 = s.cross(n);
+                at(0) = t1[0];
+                at(1) = t1[1];
+                at(2) = t1[2];
+//                at(0) = n[2] * s[1] - n[1] * s[2];
+//                at(1) = n[0] * s[2] - n[2] * s[0];
+//                at(2) = n[1] * s[0] - n[0] * s[1];
                 at(3) = n[0];
                 at(4) = n[1];
                 at(5) = n[2];
@@ -283,7 +287,7 @@ public:
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
-            std::cout << "Matching points ... Iteration: " << i << std::endl;
+            //std::cout << "Matching points ... Iteration: " << i << std::endl;
             clock_t begin = clock();
 
             // Transform points and normals.  IMPORTANT.
@@ -341,7 +345,7 @@ public:
 
             clock_t end = clock();
             double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-            std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
+            //std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
 
             Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
             Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
@@ -350,10 +354,10 @@ public:
             CUDA_CALL(cudaMemcpyAsync(atb_cpu.data(),atbs[0].data(),sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
 
             VectorXf x(6);
-            x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
+            //x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
 
-            //JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
-            //x = svd.solve(atb_cpu);
+            JacobiSVD<MatrixXf> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            x = svd.solve(atb_cpu);
             //x = ata_cpu.llt().solve(atb_cpu);
             //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
 
@@ -376,7 +380,7 @@ public:
 
             // std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
 
-            std::cout << "Optimization iteration done." << std::endl;
+            //std::cout << "Optimization iteration done." << std::endl;
         }
 
         return estimatedPose_cpu;

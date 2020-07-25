@@ -5,6 +5,8 @@
 #include "device_launch_parameters.h"
 #include "VolumetricGridCuda.h"
 
+#define DIVSHORTMAX 0.0000305185f //1.f / SHRT_MAX;
+
 __device__ __forceinline__
 float interpolate_trilinearly(const Vector3f& point,
                               const float* volume,
@@ -14,37 +16,40 @@ float interpolate_trilinearly(const Vector3f& point,
 
     Vector3i point_in_grid = point.cast<int>();
 
-    const int x0 = round(point.x());
-    const int y0 = round(point.y());
-    const int z0 = round(point.y());
+    const float vx = (static_cast<float>(point_in_grid.x()) + 0.5f);
+    const float vy = (static_cast<float>(point_in_grid.y()) + 0.5f);
+    const float vz = (static_cast<float>(point_in_grid.z()) + 0.5f);
 
-    const int x1 = (x0 > point.x()) ? x0 - 1 : x0 + 1;
-    const int y1 = (y0 > point.y()) ? y0 - 1 : y0 + 1;
-    const int z1 = (z0 > point.z()) ? z0 - 1 : z0 + 1;
+    point_in_grid.x() = (point.x() < vx) ? (point_in_grid.x() - 1) : point_in_grid.x();
+    point_in_grid.y() = (point.y() < vy) ? (point_in_grid.y() - 1) : point_in_grid.y();
+    point_in_grid.z() = (point.z() < vz) ? (point_in_grid.z() - 1) : point_in_grid.z();
 
-    const float xd = (point.x() - x0) / (x1 - x0);
-    const float yd = (point.y() - y0) / (y1 - y0);
-    const float zd = (point.z() - z0) / (z1 - z0);
+    const float a = (point.x() - (static_cast<float>(point_in_grid.x()) + 0.5f));
+    const float b = (point.y() - (static_cast<float>(point_in_grid.y()) + 0.5f));
+    const float c = (point.z() - (static_cast<float>(point_in_grid.z()) + 0.5f));
 
-    // @TODO: Check the indexing, its different in our case
-    const float c000 = volume[x0 + y0 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c001 = volume[x1 + y0 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c010 = volume[x0 + y1 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c011 = volume[x1 + y1 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c100 = volume[x0 + y0 * (voxel_grid_dim_y-1) + z1 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c101 = volume[x1 + y0 * (voxel_grid_dim_y-1) + z1 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c110 = volume[x1 + y1 * (voxel_grid_dim_y-1) + z0 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
-    const float c111 = volume[x1 + y1 * (voxel_grid_dim_y-1) + z1 * (voxel_grid_dim_z-1) * (voxel_grid_dim_y -1)];
+    const int xd = point_in_grid.x();
+    const int yd = point_in_grid.y();
+    const int zd = point_in_grid.z();
 
-    const float c00 = c000 * (1 - xd) + c100 * xd;
-    const float c01 = c001 * (1 - xd) + c101 * xd;
-    const float c10 = c010 * (1 - xd) + c110 * xd;
-    const float c11 = c011 * (1 - xd) + c111 * xd;
+    const float c000 = volume[(xd) + (yd) * voxel_grid_dim_x + (zd) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c001 = volume[(xd) + (yd) * voxel_grid_dim_x + (zd + 1) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c010 = volume[(xd) + (yd + 1) * voxel_grid_dim_x + (zd) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c011 = volume[(xd) + (yd + 1) * voxel_grid_dim_x + (zd + 1) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c100 = volume[(xd + 1) + (yd) * voxel_grid_dim_x + (zd) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c101 = volume[(xd + 1) + (yd) * voxel_grid_dim_x + (zd + 1) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c110 = volume[(xd + 1) + (yd + 1) * voxel_grid_dim_x + (zd) * voxel_grid_dim_x * voxel_grid_dim_y];
+    const float c111 = volume[(xd + 1) + (yd + 1) * voxel_grid_dim_x + (zd + 1) * voxel_grid_dim_x * voxel_grid_dim_y];
 
-    const float c0 = c00 * (1 - yd) + c10 * yd;
-    const float c1 = c01 * (1 - yd) + c11 * yd;
 
-    return c0 * (1 - zd) + c1 * zd;
+    return c000 * (1 - a) * (1 - b) * (1 - c) +
+           c001 * (1 - a) * (1 - b) * c +
+           c010 * (1 - a) * b * (1 - c) +
+           c011 * (1 - a) * b * c +
+           c100 * a * (1 - b) * (1 - c) +
+           c101 * a * (1 - b) * c +
+           c110 * a * b * (1 - c) +
+           c111 * a * b * c;
 }
 
 __device__ __forceinline__
@@ -78,20 +83,21 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                  const size_t height,
                  const size_t N,
                  Vector3f* g_vertex,
-                 Vector3f* g_normal
+                 Vector3f* g_normal,
+                 float* renderedImage
                  ) {
 
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 
     //Terminate all un-necessary threads
     if (idx >= N) {
-        printf("a01-ending\n");
         return;
     }
 
     // Initialize the point and its normal
     g_vertex[idx] = Vector3f(-MINF,-MINF,-MINF);
     g_normal[idx] = Vector3f(-MINF,-MINF,-MINF);
+    renderedImage[idx] = 0;
 
     // Get (x,y) of pixel
     int x = idx / width;
@@ -152,70 +158,104 @@ void raycastTSDF(const float* voxel_grid_TSDF,
         if (previous_tsdf > 0.f && tsdf < 0.f) {
             const float t_star = ray_length - trunc_margin * 0.5f * previous_tsdf / (tsdf - previous_tsdf);
 
-            const auto vertex = translation + ray_direction * t_star;
+            const Vector3f vertex = translation + ray_direction * t_star;
 
             const Vector3f location_in_grid = (vertex / voxel_size);
             if (location_in_grid.x() < 1 || location_in_grid.x() >= voxel_grid_dim_x - 1 ||
                 location_in_grid.y() < 1 || location_in_grid.y() >= voxel_grid_dim_y - 1 ||
                 location_in_grid.z() < 1 || location_in_grid.z() >= voxel_grid_dim_z -1) {
+                printf("breaking for 0... \n");
                 break;
             }
 
-            printf("FOUND CROSSING... \n");
+//            int volume_idx2 =
+//                    (__float2int_rd(grid(2)) * voxel_grid_dim_y * voxel_grid_dim_x) + (__float2int_rd(grid(1)) * voxel_grid_dim_x) + __float2int_rd(grid(0));
+//            Vector3f normal;
+//
+//            g_vertex[idx] = Vector3f(vertex.x(), vertex.y(), vertex.z());
+//            g_normal[idx] = Vector3f(normal.x(), normal.y(), normal.z());
+//
+//            renderedImage[idx] = ray_direction.transpose() * g_normal[idx];
+
+            // printf("FOUND CROSSING... \n");
 
             Vector3f normal, shifted;
 
             shifted = location_in_grid;
             shifted.x() += 1;
-            if (shifted.x() >= voxel_grid_dim_x - 1)
+            if (shifted.x() >= voxel_grid_dim_x - 1){
+                printf("breaking for 1... \n");
                 break;
+            }
+
             const float Fx1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.x() -= 1;
-            if (shifted.x() < 1)
+            if (shifted.x() < 1){
+                printf("breaking for 2... \n");
                 break;
+            }
             const float Fx2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.x() = (Fx1 - Fx2);
 
             shifted = location_in_grid;
             shifted.y() += 1;
-            if (shifted.y() >= voxel_grid_dim_y - 1)
+            if (shifted.y() >= voxel_grid_dim_y - 1){
+                printf("breaking for 3... \n");
                 break;
+            }
             const float Fy1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.y() -= 1;
-            if (shifted.y() < 1)
+            if (shifted.y() < 1){
+                printf("breaking for 4... \n");
                 break;
+            }
             const float Fy2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.y() = (Fy1 - Fy2);
 
             shifted = location_in_grid;
             shifted.z() += 1;
-            if (shifted.z() >= voxel_grid_dim_z - 1)
+            if (shifted.z() >= voxel_grid_dim_z - 1){
+                printf("breaking for 5... \n");
                 break;
+            }
             const float Fz1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.z() -= 1;
-            if (shifted.z() < 1)
+            if (shifted.z() < 1){
+                printf("breaking for 6... \n");
                 break;
+            }
             const float Fz2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.z() = (Fz1 - Fz2);
 
-            if (normal.norm() == 0)
+            if (normal.norm() == 0){
+                printf("breaking for 7... \n");
                 break;
+            }
 
             normal.normalize();
+
+            // printf("FOUND CROSSING... \n");
             g_vertex[idx] = Vector3f(vertex.x(), vertex.y(), vertex.z());
             g_normal[idx] = Vector3f(normal.x(), normal.y(), normal.z());
 
+            //renderedImage[idx] = ray_direction.transpose() * g_normal[idx];
+            renderedImage[idx] = g_normal[idx].dot((Vector3f(1,1,1).normalized()));
+
             break;
         }
+    }
+
+    if (ray_length > max_search_length) {
+        printf("ray not hit anything...");
     }
 
 }
@@ -238,6 +278,7 @@ public:
     void predict(const VolumetricGridCuda& volume,
                Vector3f* g_vertices,
                Vector3f* g_normals,
+               float* renderedImage,
                const Matrix4f& pose,
                size_t width,
                size_t height
@@ -246,7 +287,7 @@ public:
         // copy pose to gpu
         CUDA_CALL(cudaMemcpy(pose_gpu, pose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
-        std::cout << "Surface Prediction ... " << std::endl;
+        //std::cout << "Surface Prediction ... " << std::endl;
         clock_t begin = clock();
 
         const size_t N = width * height;
@@ -264,7 +305,8 @@ public:
                 height,
                 N,
                 g_vertices,
-                g_normals
+                g_normals,
+                renderedImage
                 );
 
         CUDA_CHECK_ERROR
@@ -274,7 +316,7 @@ public:
 
         clock_t end = clock();
         double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Surface Prediction Completed in " << elapsedSecs << " seconds." << std::endl;
+        // std::cout << "Surface Prediction Completed in " << elapsedSecs << " seconds." << std::endl;
 
     }
 

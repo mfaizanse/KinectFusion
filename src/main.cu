@@ -9,10 +9,11 @@
 #include "BilateralFilter.h"
 #include "MipMap.h"
 #include "VolumetricGridCuda.h"
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #define USE_GPU_ICP	1
 #define USE_REDUCTION_ICP 0
-
 
 
 struct VertexMipMap {
@@ -58,7 +59,8 @@ int reconstructRoom() {
 	}
 
     optimizer->setMatchingMaxDistance(0.1f);
-    optimizer->setMatchingMaxAngle(1.0472f);
+    //optimizer->setMatchingMaxDistance(0.0003f);
+    optimizer->setMatchingMaxAngle(1.0472f); // 0.523599 // 1.0472f
     optimizer->usePointToPlaneConstraints(true);
     optimizer->setNbOfIterations(20);
 
@@ -103,11 +105,13 @@ int reconstructRoom() {
     CUDA_CALL(cudaMalloc((void **) &unfilteredDepth, N * sizeof(float)));
 
     CUDA_CALL(cudaMalloc((void **) &previousFrame.depthMap, N * sizeof(float)));
+    CUDA_CALL(cudaMalloc((void **) &previousFrame.renderedImage, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_normals, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.globalCameraPose, sizeof(Matrix4f)));
 
     CUDA_CALL(cudaMalloc((void **) &currentFrame.depthMap, N * sizeof(float)));
+    CUDA_CALL(cudaMalloc((void **) &currentFrame.renderedImage, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.g_vertices, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
@@ -123,8 +127,26 @@ int reconstructRoom() {
     Matrix4f *tmp4fMat_cpu;
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
+//    cv::Mat testImage;
+//    testImage = cv::imread("../../data/test.png");
+//    if(! testImage.data )                              // Check for invalid input
+//    {
+//        std::cout <<  "Could not open or find the image" << std::endl ;
+//        return -1;
+//    }
+//
+//    cv::namedWindow( "Display window", cv::WINDOW_AUTOSIZE );// Create a window for display.
+//    cv::imshow( "Display window", testImage );                   // Show our image inside it.
+//
+//    cv::waitKey(0);
+
+
+
+    cv::Mat renderedDepthImg = cv::Mat(depthFrameHeight, depthFrameWidth, CV_32FC1);
+    cv::namedWindow("Kinect_Fusion");
+
 	int i = 0;
-	const int iMax = 4;
+	const int iMax = 6;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -162,14 +184,16 @@ int reconstructRoom() {
 		// Don't do ICP on 1st  frame
 		if (i > 0) {
             if (USE_GPU_ICP)  {
+                std::cout << "Running ICP..." << std::endl;
                 // The arguments should be on device memory
                 // The returned pose matrix will be on host memory
-                currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
+                 currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
             }
             else {
                 // currentCameraToWorld = optimizer->estimatePose(depthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
             }
 		}
+        std::cout << "currentFrameToPreviousFrame pose: " << std::endl << currentFrameToPreviousFrame << std::endl;
         currentCameraToWorld = currentFrameToPreviousFrame * currentCameraToWorld;
 
 		//// Step 3:  Volumetric Grid Fusion
@@ -177,12 +201,13 @@ int reconstructRoom() {
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
 
         // Step 4: Ray-Casting
-        surfacePrediction.predict(volumetricGrid,
-		        currentFrame.g_vertices,
-		        currentFrame.g_normals,
-		        currentCameraToWorld,
-                depthFrameWidth,
-                depthFrameHeight);
+//        surfacePrediction.predict(volumetricGrid,
+//		        currentFrame.g_vertices,
+//		        currentFrame.g_normals,
+//		        currentFrame.renderedImage,
+//		        currentCameraToWorld,
+//                depthFrameWidth,
+//                depthFrameHeight);
 
 		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
@@ -194,14 +219,21 @@ int reconstructRoom() {
 
 		// Update global rotation+translation
 		// Copy from device memory to host memory, then update.
-        CUDA_CALL(cudaMemcpy(tmp4fMat_cpu, previousFrame.globalCameraPose->data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
-		*tmp4fMat_cpu = currentCameraPose * *tmp4fMat_cpu;
-        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, (*tmp4fMat_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+//        CUDA_CALL(cudaMemcpy(tmp4fMat_cpu, previousFrame.globalCameraPose->data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
+//		*tmp4fMat_cpu = currentCameraPose * *tmp4fMat_cpu;
+        //*tmp4fMat_cpu = (*tmp4fMat_cpu).inverse();
+        //CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, (*tmp4fMat_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+        CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
         // IMPORTANT QUESTIONS: I THINK WE DONT NEED TO DO IT NOW WHEN WE ARE DOING THE RAYCASTING
         // @TODO: Step 6: Transform all points and normals to new camera pose
         // IMPORTANT STEP  MISSING
-        ///// transformHelper.transformCurrentFrameVertices(currentFrame, currentFrame.globalCameraPose);
+        //// transformHelper.transformCurrentFrameVertices(currentFrame, currentFrame.globalCameraPose);
+
+        //// Render the raycast result
+//        CUDA_CALL(cudaMemcpy(renderedDepthImg.data, currentFrame.renderedImage, N * sizeof(float), cudaMemcpyDeviceToHost));
+//        imshow( "Kinect_Fusion", renderedDepthImg);
+//        cv::waitKey( 1 );
 
         // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data

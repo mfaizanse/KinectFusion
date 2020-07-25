@@ -9,4 +9,5 @@ struct FrameData {
     size_t width;
     size_t height;
     Matrix4f* globalCameraPose; // On device memory
+    float* renderedImage; // On device memory
 };
