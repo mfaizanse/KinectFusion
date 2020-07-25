@@ -146,7 +146,7 @@ int reconstructRoom() {
     cv::namedWindow("Kinect_Fusion");
 
 	int i = 0;
-	const int iMax = 6;
+	const int iMax = 3;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -201,13 +201,13 @@ int reconstructRoom() {
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
 
         // Step 4: Ray-Casting
-//        surfacePrediction.predict(volumetricGrid,
-//		        currentFrame.g_vertices,
-//		        currentFrame.g_normals,
-//		        currentFrame.renderedImage,
-//		        currentCameraToWorld,
-//                depthFrameWidth,
-//                depthFrameHeight);
+        surfacePrediction.predict(volumetricGrid,
+		        currentFrame.g_vertices,
+		        currentFrame.g_normals,
+		        currentFrame.renderedImage,
+		        currentCameraToWorld,
+                depthFrameWidth,
+                depthFrameHeight);
 
 		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
@@ -230,10 +230,10 @@ int reconstructRoom() {
         // IMPORTANT STEP  MISSING
         //// transformHelper.transformCurrentFrameVertices(currentFrame, currentFrame.globalCameraPose);
 
-        //// Render the raycast result
-//        CUDA_CALL(cudaMemcpy(renderedDepthImg.data, currentFrame.renderedImage, N * sizeof(float), cudaMemcpyDeviceToHost));
-//        imshow( "Kinect_Fusion", renderedDepthImg);
-//        cv::waitKey( 1 );
+        // Render the raycast result
+        CUDA_CALL(cudaMemcpy(renderedDepthImg.data, currentFrame.renderedImage, N * sizeof(float), cudaMemcpyDeviceToHost));
+        imshow( "Kinect_Fusion", renderedDepthImg);
+        cv::waitKey( 0 );
 
         // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data
