@@ -98,8 +98,34 @@ void Integrate(Matrix3f* intrinsic_matrix,
  * VolumetricGridCuda - using CUDA
  */
 class VolumetricGridCuda {
+
 public:
+
+    float voxel_grid_origin_x;
+    float voxel_grid_origin_y;
+    float voxel_grid_origin_z;
+    // size of each voxel
+    float voxel_size;
+    // define a margin for TSDF(can be adjusted depending on the problem)
+    float trunc_margin;
+    // size of the 3 dim voxel grid
+    int voxel_grid_dim_x;
+    int voxel_grid_dim_y;
+    int voxel_grid_dim_z;
+    Vector3i voxel_grid_size;
+
+    float* voxel_grid_TSDF;
+    float* voxel_grid_weight;
+    float* voxel_grid_TSDF_GPU;
+    float* voxel_grid_weight_GPU;
+
+    Matrix3f* intrinsics;
+    Matrix4f* base_pose;
+    Matrix4f* base_pose_inv;
+
     VolumetricGridCuda(Matrix3f* intrinsics_gpu, Matrix4f* base_pose_CPU) {
+        //global volume
+
         //// ###  Initialize  Voumetric Grid
         voxel_grid_origin_x = -1.5f;
         voxel_grid_origin_y = -1.5f;
@@ -114,6 +140,7 @@ public:
         voxel_grid_dim_x = 500;
         voxel_grid_dim_y = 500;
         voxel_grid_dim_z = 500;
+        voxel_grid_size = Vector3i(voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
         voxel_grid_TSDF = new float[voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z];
         voxel_grid_weight = new float[voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z];
@@ -156,7 +183,7 @@ public:
     }
 
     void integrateFrame(Matrix4f* current_pose, const FrameData& currentFrame) {
-        std::cout << "Fusing into Volumetric Grid... " << std::endl;
+        // std::cout << "Fusing into Volumetric Grid... " << std::endl;
         clock_t begin = clock();
 
         Matrix4f* current_pose_gpu;
@@ -188,7 +215,7 @@ public:
 
         clock_t end = clock();
         double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Fusing Completed in " << elapsedSecs << " seconds." << std::endl;
+        //std::cout << "Fusing Completed in " << elapsedSecs << " seconds." << std::endl;
     }
 
     // Compute surface points from TSDF voxel grid and save points to point cloud file
@@ -258,29 +285,11 @@ public:
 
     void copyVGFromDeviceToHost() {
         // Load TSDF voxel grid weights and distances from device back to host
-        CUDA_CALL(cudaMemcpy(voxel_grid_TSDF, voxel_grid_TSDF_GPU, voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z * sizeof(float), cudaMemcpyDeviceToHost));
-        CUDA_CALL(cudaMemcpy(voxel_grid_weight, voxel_grid_weight_GPU, voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z * sizeof(float), cudaMemcpyDeviceToHost));
+        CUDA_CALL(cudaMemcpy(voxel_grid_TSDF, voxel_grid_TSDF_GPU,
+                             voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z * sizeof(float),
+                             cudaMemcpyDeviceToHost));
+        CUDA_CALL(cudaMemcpy(voxel_grid_weight, voxel_grid_weight_GPU,
+                             voxel_grid_dim_x * voxel_grid_dim_y * voxel_grid_dim_z * sizeof(float),
+                             cudaMemcpyDeviceToHost));
     }
-
-private:
-    float voxel_grid_origin_x;
-    float voxel_grid_origin_y;
-    float voxel_grid_origin_z;
-    // size of each voxel
-    float voxel_size;
-    // define a margin for TSDF(can be adjusted depending on the problem)
-    float trunc_margin;
-    // size of the 3 dim voxel grid
-    int voxel_grid_dim_x;
-    int voxel_grid_dim_y;
-    int voxel_grid_dim_z;
-
-    float* voxel_grid_TSDF;
-    float* voxel_grid_weight;
-    float* voxel_grid_TSDF_GPU;
-    float* voxel_grid_weight_GPU;
-
-    Matrix3f* intrinsics;
-    Matrix4f* base_pose;
-    Matrix4f* base_pose_inv;
 };
