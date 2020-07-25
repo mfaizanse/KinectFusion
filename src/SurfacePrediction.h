@@ -23,14 +23,14 @@ float interpolate_trilinearly(const Vector3f& point, const float* volume, const 
     const float yd = (point.y() - y0) / (y1 - y0);
     const float zd = (point.z() - z0) / (z1 - z0);
 
-    const float c000 = volume[x0 + y0 * (volume_size.y()-1) + z0 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c001 = volume[x1 + y0 * (volume_size.y()-1) + z0 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c010 = volume[x0 + y1 * (volume_size.y()-1) + z0 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c011 = volume[x1 + y1 * (volume_size.y()-1) + z0 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c100 = volume[x0 + y0 * (volume_size.y()-1) + z1 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c101 = volume[x1 + y0 * (volume_size.y()-1) + z1 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c110 = volume[x1 + y1 * (volume_size.y()-1) + z0 * (volume_size.z()-1) * (volume_size.y() -1)];
-    const float c111 = volume[x1 + y1 * (volume_size.y()-1) + z1 * (volume_size.z()-1) * (volume_size.y() -1)];
+    const float c000 = volume[x0 + y0 * volume_size.y() + z0 * volume_size.z() * volume_size.y()];
+    const float c001 = volume[x1 + y0 * volume_size.y() + z0 * volume_size.z() * volume_size.y()];
+    const float c010 = volume[x0 + y1 * volume_size.y() + z0 * volume_size.z() * volume_size.y()];
+    const float c011 = volume[x1 + y1 * volume_size.y() + z0 * volume_size.z() * volume_size.y()];
+    const float c100 = volume[x0 + y0 * volume_size.y() + z1 * volume_size.z() * volume_size.y()];
+    const float c101 = volume[x1 + y0 * volume_size.y() + z1 * volume_size.z() * volume_size.y()];
+    const float c110 = volume[x1 + y1 * volume_size.y() + z0 * volume_size.z() * volume_size.y()];
+    const float c111 = volume[x1 + y1 * volume_size.y() + z1 * volume_size.z() * volume_size.y()];
 
     const float c00 = c000 * (1 - xd) + c100 * xd;
     const float c01 = c001 * (1 - xd) + c101 * xd;
