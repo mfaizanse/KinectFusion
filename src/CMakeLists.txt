@@ -41,6 +41,7 @@ set(CMAKE_CXX_STANDARD 14)
 #find_package(Ceres REQUIRED)
 #find_package(glog REQUIRED ${glog_DIR_HINT})
 #find_package(Eigen3 3.3 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 find_package(CUDA  REQUIRED)
 include_directories("${CUDA_INCLUDE_DIRS}")
@@ -53,6 +54,7 @@ endif()
 
 message(STATUS "path to eigen3 include directory = ${Eigen3_INCLUDE_DIR}")
 message(STATUS "Path to CUB include directory = ${CUB_INCLUDE_DIR}")
+message(STATUS "Path to OpenCV libs = ${OpenCV_LIBS}")
 
 # Set files to be compiled
 set(HEADER_FILES 
@@ -75,7 +77,7 @@ set(SOURCE_FILES
 link_directories(${FreeImage_LIBRARY_DIR})
 add_executable(kinect_fusion main.cu ${HEADER_FILES} ${SOURCE_FILES})
 #target_link_libraries (kinect_fusion Eigen3::Eigen)
-target_link_libraries(kinect_fusion freeimage)
+target_link_libraries(kinect_fusion freeimage ${OpenCV_LIBS})
 target_include_directories(kinect_fusion PUBLIC ${CUB_INCLUDE_DIR} ${Eigen3_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${FreeImage_INCLUDE_DIR})
 
 set_target_properties(

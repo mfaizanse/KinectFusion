@@ -8,6 +8,9 @@
 #include "CudaICPOptimizer.h"
 #include "BilateralFilter.h"
 
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+
 struct DepthMipMap {
     float *depthMap;
     size_t width;
@@ -26,7 +29,7 @@ struct VertexMipMap {
 
 
 #define USE_GPU_ICP	1
-#define USE_REDUCTION_ICP 0
+#define USE_REDUCTION_ICP 1
 
 
 int reconstructRoom() {
@@ -240,6 +243,24 @@ int reconstructRoom() {
         FrameData tmpFrame = previousFrame;
         previousFrame = currentFrame;
         currentFrame = tmpFrame;
+
+        cv::Mat img = cv::Mat::zeros(480,640,CV_32F);
+
+        std::vector<Vector3f> normals = std::vector<Vector3f>(640*480);
+
+        CUDA_CALL(cudaMemcpyAsync(normals.data(),previousFrame.g_normals,sizeof(Vector3f) * 640 * 480,cudaMemcpyDeviceToHost));
+        CUDA_CALL(cudaDeviceSynchronize());
+
+        std::cout << "Generating img" << std::endl;
+        for(int normal_idx = 0;normal_idx < normals.size();normal_idx++) {
+            img.at<float>(normal_idx) = normals[normal_idx].dot((Vector3f(1,1,1).normalized()));
+        }
+        std::cout << "Done." << std::endl;
+
+        cv::namedWindow("Current mesh");
+        cv::imshow("Current mesh",img);
+        cv::waitKey(0);
+        cv::destroyAllWindows();
 
 		// if (i % 5 == 0) {
 		if (i > 0) {
