@@ -80,12 +80,11 @@ __global__ void getCorrespondences(
         return;
     }
 
-    // bool isCorrespondenceFound = false;
-
     Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
     Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
 
-    if (currentDepthMap[idx] > 0) {
+    //if (currentDepthMap[idx] > 0) {
+    if (previousVertices[idx].x() != -MINF) {
         // printf("a1\n");
         // Transform previous point to camera coordinates from  world coordinates
         Matrix4f poseInv = (*previousGlobalCameraPose).inverse();
@@ -284,11 +283,11 @@ public:
         Matrix4f estimatedPose_cpu;
         CUDA_CALL(cudaMemcpy(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
 
+        clock_t begin = clock();
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
             //std::cout << "Matching points ... Iteration: " << i << std::endl;
-            clock_t begin = clock();
 
             // Transform points and normals.  IMPORTANT.
             // 640*480 = 307200
@@ -342,11 +341,6 @@ public:
             // Wait for GPU to finish before accessing on host
             cudaDeviceSynchronize();
 
-
-            clock_t end = clock();
-            double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-            //std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
-
             Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
             Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
 
@@ -382,6 +376,10 @@ public:
 
             //std::cout << "Optimization iteration done." << std::endl;
         }
+
+        clock_t end = clock();
+        double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
+        std::cout << "ICP " << m_nIterations << " iterations completed in " << elapsedSecs << " seconds." << std::endl;
 
         return estimatedPose_cpu;
     }
@@ -643,5 +641,4 @@ private:
     size_t temp_storage_bytes_ata = 0;
     void *d_temp_storage_atb = NULL;
     size_t temp_storage_bytes_atb = 0;
-
 };

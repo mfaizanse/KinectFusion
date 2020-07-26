@@ -30,7 +30,7 @@ __global__ void measureSurfaceVertices(
     size_t v = idx % width;
 
     //Back projection with filtered depth measurement
-    if(depthMap[idx] <= 0.0f) {
+    if(depthMap[idx] <= 0.0f || depthMap[idx] > 7000) {
         vertices[idx] = Vector3f(-MINF,-MINF,-MINF);
     } else {
         vertices[idx] = depthMap[idx] * g_k_inv[0] *
@@ -92,6 +92,8 @@ public:
                         cudaStream_t stream = 0) {
         size_t sensorSize = width * height;
 
+        clock_t begin = clock();
+
         measureSurfaceVertices<<<(sensorSize + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>> (
                 g_depthMap,
                 g_vertices,
@@ -115,6 +117,10 @@ public:
 
         // Wait for GPU to finish before accessing on host
         cudaDeviceSynchronize();
+
+        clock_t end = clock();
+        double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
+        std::cout << "Surface measurement completed in " << elapsedSecs << " seconds." << std::endl;
     }
 
     /*

@@ -127,9 +127,9 @@ public:
         //global volume
 
         //// ###  Initialize  Voumetric Grid
-        voxel_grid_origin_x = 0.0f;
-        voxel_grid_origin_y = 0.0f;
-        voxel_grid_origin_z = 0.0f;
+        voxel_grid_origin_x = -1.5f;
+        voxel_grid_origin_y = -1.5f;
+        voxel_grid_origin_z = 0.5f;
 
         // size of each voxel
         voxel_size = 0.01f;
