@@ -213,9 +213,9 @@ void raycastTSDF(const float* voxel_grid_TSDF,
 
             // @TODO: check agian if we need vTranslate???
             //const Vector3f vertex = ray_start + (ray_dir * approx_len) - vTranslate;
-            const Vector3f vertex = (ray_start + (ray_dir * ray_len) - vTranslate);
+            const Vector3f vertex = ray_start + (ray_dir * ray_len);
 
-            const Vector3f location_in_grid = (vertex / voxel_size);
+            const Vector3f location_in_grid = ((ray_start + (ray_dir * ray_len) - vTranslate) / voxel_size);
             //const Vector3f location_in_grid = vertex;
             if (location_in_grid.x() < 1
                 || location_in_grid.x() >= voxel_grid_dim_x - 1
@@ -237,8 +237,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 break;
             }
 
-            const float Fx1 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
-            // const float Fx1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            //const float Fx1 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            const float Fx1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.x() -= 1;
@@ -246,9 +246,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 printf("breaking for 2... \n");
                 break;
             }
-
-            const float Fx2 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
-            //const float Fx2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            //const float Fx2 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            const float Fx2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.x() = (Fx1 - Fx2);
 
@@ -259,8 +258,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 break;
             }
 
-            const float Fy1 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
-            //const float Fy1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            //const float Fy1 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            const float Fy1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.y() -= 1;
@@ -268,8 +267,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 printf("breaking for 4... \n");
                 break;
             }
-            const float Fy2 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
-            //const float Fy2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            //const float Fy2 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            const float Fy2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.y() = (Fy1 - Fy2);
 
@@ -279,8 +278,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 printf("breaking for 5... \n");
                 break;
             }
-            const float Fz1 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
-            //const float Fz1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            //const float Fz1 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            const float Fz1 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             shifted = location_in_grid;
             shifted.z() -= 1;
@@ -288,8 +287,8 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                 printf("breaking for 6... \n");
                 break;
             }
-            const float Fz2 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
-            //const float Fz2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            //const float Fz2 = getValueOfVolume(shifted.cast<int>(), voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
+            const float Fz2 = interpolate_trilinearly(shifted, voxel_grid_TSDF, voxel_grid_dim_x, voxel_grid_dim_y, voxel_grid_dim_z);
 
             normal.z() = (Fz1 - Fz2);
 
@@ -304,10 +303,11 @@ void raycastTSDF(const float* voxel_grid_TSDF,
             g_vertex[idx] = Vector3f(vertex.x(), vertex.y(), vertex.z());
             g_normal[idx] = Vector3f(normal.x(), normal.y(), normal.z());
 
-            //renderedImage[idx] = ray_direction.transpose() * g_normal[idx];
+//            renderedImage[idx] = ray_dir.transpose() * g_normal[idx];
+//            renderedImage[idx] = renderedImage[idx] * 10;
             renderedImage[idx] = g_normal[idx].dot((Vector3f(1,1,1).normalized()));
 
-            //renderedImage[idx] = g_vertex[idx].norm();
+           // renderedImage[idx] = 150;
 
             break;
         }
