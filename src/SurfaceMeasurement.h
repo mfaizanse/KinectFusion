@@ -72,7 +72,7 @@ public:
      * Set up surface measurement for specific camera and filtering parameters
      * k_inv represents camera intrinsics
      */
-    SurfaceMeasurement(Matrix3f k_inv, float sigma_s, float sigma_r, cudaStream_t stream = 0) {
+    SurfaceMeasurement(Matrix3f k_inv, cudaStream_t stream = 0) {
 
         CUDA_CALL(cudaMalloc((void **) &g_k_inv, sizeof(Matrix3f)));
 

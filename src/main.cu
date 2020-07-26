@@ -30,6 +30,7 @@ struct VertexMipMap {
 
 #define USE_GPU_ICP	1
 #define USE_REDUCTION_ICP 1
+#define SHOW_MESH 0
 
 
 int reconstructRoom() {
@@ -69,7 +70,7 @@ int reconstructRoom() {
     optimizer->setMatchingMaxDistance(0.1f);
     optimizer->setMatchingMaxAngle(1.0472f);
     optimizer->usePointToPlaneConstraints(true);
-    optimizer->setNbOfIterations(20);
+    optimizer->setNbOfIterations(40);
 
 
 
@@ -93,7 +94,7 @@ int reconstructRoom() {
 
     TransformHelper transformHelper;
 
-    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
+    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0);
     VolumetricGridCuda volumetricGrid(cudaDepthIntrinsics,  &base_pose_cpu);
 
     // Defining memory for previous and current frames,  [on Device memory]
@@ -147,7 +148,7 @@ int reconstructRoom() {
         CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
         cudaEventRecord(start);
-        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
+        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,100,3,depthFrameHeight,N);
         cudaEventRecord(stop);
         cudaEventSynchronize(stop);
 
@@ -192,7 +193,7 @@ int reconstructRoom() {
                 // The arguments should be on device memory
                 // The returned pose matrix will be on host memory
                 cudaEventRecord(start);
-                currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
+                currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *previousFrame.globalCameraPose);
 
                 cudaEventRecord(stop);
                 cudaEventSynchronize(stop);
@@ -244,31 +245,38 @@ int reconstructRoom() {
         previousFrame = currentFrame;
         currentFrame = tmpFrame;
 
-        cv::Mat img = cv::Mat::zeros(480,640,CV_32F);
+        if(SHOW_MESH) {
+            cv::Mat img = cv::Mat::zeros(480, 640, CV_32F);
 
-        std::vector<Vector3f> normals = std::vector<Vector3f>(640*480);
+            std::vector<Vector3f> normals = std::vector<Vector3f>(640 * 480);
 
-        CUDA_CALL(cudaMemcpyAsync(normals.data(),previousFrame.g_normals,sizeof(Vector3f) * 640 * 480,cudaMemcpyDeviceToHost));
-        CUDA_CALL(cudaDeviceSynchronize());
+            CUDA_CALL(cudaMemcpyAsync(normals.data(), previousFrame.g_normals, sizeof(Vector3f) * 640 * 480,
+                                      cudaMemcpyDeviceToHost));
+            CUDA_CALL(cudaDeviceSynchronize());
 
-        std::cout << "Generating img" << std::endl;
-        for(int normal_idx = 0;normal_idx < normals.size();normal_idx++) {
-            img.at<float>(normal_idx) = normals[normal_idx].dot((Vector3f(1,1,1).normalized()));
+            std::cout << "Generating img" << std::endl;
+            for (int normal_idx = 0; normal_idx < normals.size(); normal_idx++) {
+                img.at<float>(normal_idx) = normals[normal_idx].dot((Vector3f(1, 1, 1).normalized()));
+            }
+            std::cout << "Done." << std::endl;
+
+            cv::namedWindow("Current mesh");
+            cv::imshow("Current mesh", img);
+            cv::waitKey(0);
+            cv::destroyAllWindows();
         }
-        std::cout << "Done." << std::endl;
-
-        cv::namedWindow("Current mesh");
-        cv::imshow("Current mesh",img);
-        cv::waitKey(0);
-        cv::destroyAllWindows();
 
 		// if (i % 5 == 0) {
 		if (i > 0) {
 		    std::cout << "Saving mesh ..." << std::endl;
             // We write out the mesh to file for debugging.
-            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
+            std::vector<Vector3f> cpu_vertices = std::vector<Vector3f>(640 * 480);
+            CUDA_CALL(cudaMemcpyAsync(cpu_vertices.data(),previousFrame.g_vertices,sizeof(Vector3f) * 640 * 480,cudaMemcpyDeviceToHost));
+            CUDA_CALL(cudaDeviceSynchronize());
+            SimpleMesh filteredDepthMesh{cpu_vertices.data(),640,480,sensor.getColorRGBX(), 0.1f};
+            //SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
             SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
+            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(filteredDepthMesh, currentCameraMesh, Matrix4f::Identity());
 
             std::stringstream ss;
             ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";

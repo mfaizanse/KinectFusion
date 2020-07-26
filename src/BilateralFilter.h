@@ -27,12 +27,11 @@ computeDk(float *depthMap, long u, long v, float sigma_s, float sigma_r, size_t 
     float sum = 0.0f;
     float sum2 = 0.0f;
 
-    size_t idx = u * width + v;
-
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     //Use a 3x3 grid as the smoothing kernel
-    for (size_t i = 0; i < 9; i++) {
-        long u2 = u + (i/3) - 1;
-        long v2 = v + (i%3) - 1;
+    for (size_t i = 0; i < 49; i++) {
+        long u2 = u + (i/7) - 3;
+        long v2 = v + (i%7) - 3;
         //Skip depth measurements over the edges of the image
         if(u2 < 0 || v2 < 0 || u2 == width || v2 == (N/width)){
             continue;
@@ -51,7 +50,7 @@ computeDk(float *depthMap, long u, long v, float sigma_s, float sigma_r, size_t 
         float fn_r = fancyN(sigma_r, t2);
         //Weight
         float w = fn_s * fn_r;
-        sum += w * depthMap[idx];
+        sum += w * depthMap[u2 * width + v2];
         //Normalizing factor
         sum2 += w;
     }
@@ -75,7 +74,7 @@ __global__ void bilateralFilter(float *depthMap, float *filteredMap, float sigma
         return;
     }
 
-    if(depthMap[idx] <= 0 || depthMap[idx] == NAN) {
+    if(depthMap[idx] <= 0) {
         filteredMap[idx] = depthMap[idx];
     } else {
         float f = computeDk(depthMap,u,v,sigma_s,sigma_r,width,N);
