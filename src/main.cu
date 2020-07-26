@@ -42,18 +42,20 @@ int reconstructRoom() {
     const size_t N = depthFrameWidth * depthFrameHeight;
 
     // Setup the ICP optimizer.
-    ICPOptimizer* optimizer;
-    if(USE_REDUCTION_ICP) {
-        optimizer = new LinearICPCubOptimizer(depthFrameWidth,depthFrameHeight);
-    } else {
-        optimizer = new LinearICPCudaOptimizer(depthFrameWidth,depthFrameHeight);
-    }
+//    ICPOptimizer* optimizer;
+//    if(USE_REDUCTION_ICP) {
+//        optimizer = new LinearICPCubOptimizer(depthFrameWidth,depthFrameHeight);
+//    } else {
+//        optimizer = new LinearICPCudaOptimizer(depthFrameWidth,depthFrameHeight);
+//    }
+//
+//    optimizer->setMatchingMaxDistance(0.1f);
+//    //optimizer->setMatchingMaxDistance(0.0003f);
+//    optimizer->setMatchingMaxAngle(1.0472f); // 0.523599 // 1.0472f
+//    optimizer->usePointToPlaneConstraints(true);
+//    optimizer->setNbOfIterations(40);
 
-    optimizer->setMatchingMaxDistance(0.1f);
-    //optimizer->setMatchingMaxDistance(0.0003f);
-    optimizer->setMatchingMaxAngle(1.0472f); // 0.523599 // 1.0472f
-    optimizer->usePointToPlaneConstraints(true);
-    optimizer->setNbOfIterations(40);
+    LinearICPCudaWithModelOptimizer* optimizer = new LinearICPCudaWithModelOptimizer(depthFrameWidth,depthFrameHeight);
 
     // Intrinsics on host memory
     Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
@@ -122,7 +124,7 @@ int reconstructRoom() {
     cv::waitKey( 1 );
 
 	int i = 0;
-	const int iMax = 10;
+	const int iMax = 2;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -161,7 +163,24 @@ int reconstructRoom() {
 		if (i > 0) {
             // The arguments should be on device memory
             // The returned pose matrix will be on host memory
-            currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
+            currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, volumetricGrid, *cuda4fIdentity);
+
+            ///// Debugging code  start
+            //// We write out the mesh to file for debugging.
+
+            //std::cout << "step 6" << std::endl;
+            CUDA_CALL(cudaMemcpy(g_vertices_host, previousFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
+
+            std::cout << "Saving rendered mesh ..." << std::endl;
+            SimpleMesh currentSM{ g_vertices_host, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
+            std::stringstream ss1;
+            ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
+            if (!currentSM.writeMesh(ss1.str())) {
+                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+                return -1;
+            }
+
+            ///// Debugging code  end
 		}
         std::cout << "currentFrameToPreviousFrame pose: " << std::endl << currentFrameToPreviousFrame << std::endl;
         currentCameraToWorld = currentFrameToPreviousFrame * currentCameraToWorld;
@@ -171,13 +190,13 @@ int reconstructRoom() {
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
 
         // Step 4: Ray-Casting
-        surfacePrediction.predict(volumetricGrid,
-		        currentFrame.g_vertices,
-		        currentFrame.g_normals,
-		        currentFrame.renderedImage,
-		        currentCameraToWorld,
-                depthFrameWidth,
-                depthFrameHeight);
+//        surfacePrediction.predict(volumetricGrid,
+//		        currentFrame.g_vertices,
+//		        currentFrame.g_normals,
+//		        currentFrame.renderedImage,
+//		        currentCameraToWorld,
+//                depthFrameWidth,
+//                depthFrameHeight);
 
 		// Step 5: Update trajectory poses and transform  current points
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
@@ -205,22 +224,22 @@ int reconstructRoom() {
 //        imshow( "Kinect_Fusion", renderedDepthImg);
 //        cv::waitKey( 0 );
 
-        ///// Debugging code  start
-        //// We write out the mesh to file for debugging.
-
-        //std::cout << "step 6" << std::endl;
-        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
-
-        std::cout << "Saving rendered mesh ..." << std::endl;
-        SimpleMesh currentSM{ g_vertices_host, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
-        std::stringstream ss1;
-        ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
-        if (!currentSM.writeMesh(ss1.str())) {
-            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-            return -1;
-        }
-
-        ///// Debugging code  end
+//        ///// Debugging code  start
+//        //// We write out the mesh to file for debugging.
+//
+//        //std::cout << "step 6" << std::endl;
+//        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
+//
+//        std::cout << "Saving rendered mesh ..." << std::endl;
+//        SimpleMesh currentSM{ g_vertices_host, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
+//        std::stringstream ss1;
+//        ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
+//        if (!currentSM.writeMesh(ss1.str())) {
+//            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+//            return -1;
+//        }
+//
+//        ///// Debugging code  end
 
         // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data
@@ -253,7 +272,7 @@ int reconstructRoom() {
     ss3 << filenameBaseOut << "tsdf.bin";
     volumetricGrid.copyVGFromDeviceToHost();
 	volumetricGrid.SaveVoxelGrid2SurfacePointCloud(ss2.str(),  0.2f, 0.0f);
-    volumetricGrid.SaveVoxelGrid(ss3.str());
+    //volumetricGrid.SaveVoxelGrid(ss3.str());
 
 	// Free all pointers
     CUDA_CALL(cudaFree(cudaDepthIntrinsics));

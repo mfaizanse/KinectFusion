@@ -8,6 +8,7 @@
 #include "ICPOptimizer.h"
 #include <cub/device/device_reduce.cuh>
 #include <Eigen/Cholesky>
+#include "SurfacePredictionCuda.h"
 
 #define N_FIXED 640*480
 
@@ -29,6 +30,153 @@ __global__ void sumReduction(
     // Load elements into shared memory
     partial_sum_ata[threadIdx.x] = AtAs[idx];
     partial_sum_atb[threadIdx.x] = Atbs[idx];
+    __syncthreads();
+
+    // Increase the stride of the access until we exceed the CTA dimensions
+    for (int s = 1; s < blockDim.x; s *= 2) {
+        // Change the indexing to be sequential threads
+        int index = 2 * s * threadIdx.x;
+
+        // Each thread does work unless the index goes off the block
+        if (index < blockDim.x) {
+            partial_sum_ata[index] += partial_sum_ata[index + s];
+            partial_sum_atb[index] += partial_sum_atb[index + s];
+        }
+        __syncthreads();
+    }
+
+    // Let the thread 0 for this block write it's result to main memory
+    // Result is indexed by this block
+    if (threadIdx.x == 0) {
+        AtAs[blockIdx.x] = partial_sum_ata[0];
+        Atbs[blockIdx.x] = partial_sum_atb[0];
+    }
+}
+
+__global__ void getCorrespondencesWithModel(
+        const float *currentDepthMap,
+        const Matrix4f *pose,
+        const Vector3f *currentVertices,
+        const Vector3f *currentNormals,
+        Vector3f *previousVertices,
+        Vector3f *previousNormals,
+        const float *voxel_grid_TSDF,
+        const int voxel_grid_dim_x,
+        const int voxel_grid_dim_y,
+        const int voxel_grid_dim_z,
+        const float voxel_size, // size of each voxel
+        const float trunc_margin,
+        const Matrix3f *intrinsics,
+        const size_t width,
+        const size_t height,
+        const size_t N,
+        const float distanceThreshold,
+        const float angleThreshold,
+        Matrix<float, 6, 6> *AtAs,
+        Matrix<float, 6, 1> *Atbs
+) {
+    // Allocate shared memory
+    __shared__ Matrix<float, 6, 6> partial_sum_ata[BLOCKSIZE_REDUCED];
+    __shared__ Matrix<float, 6, 1> partial_sum_atb[BLOCKSIZE_REDUCED];
+
+    size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    //Terminate all un-necessary threads
+    if (idx >= N) {
+        printf("WARNING!!!!!!!!!!!!!!!!!: UNNESSARY THREAD IN ICP, TREE REDUCTION MAY GET STUCK...!!");
+        return;
+    }
+
+    Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
+    Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
+
+    Vector3f prev_vertex = Vector3f(-MINF,-MINF,-MINF);
+    Vector3f prev_normal = Vector3f(-MINF,-MINF,-MINF);
+
+    previousVertices[idx] = Vector3f(-MINF,-MINF,-MINF);
+    previousNormals[idx] = Vector3f(-MINF,-MINF,-MINF);
+
+    if (currentDepthMap[idx] > 0 && currentVertices[idx].x() != -MINF && currentNormals[idx].x() != -MINF) {
+        // printf("a1\n");
+        // Transform previous point to camera coordinates from  world coordinates
+        //Matrix4f poseInv = (*previousGlobalCameraPose).inverse();
+//        Matrix4f poseInv = Matrix4f::Identity();
+//        auto pvH= currentVertices[idx].homogeneous();
+//        Vector4f r1 =  poseInv * pvH;
+//        Vector3f v_t_1 = Vector3f(r1.x(), r1.y(), r1.z());
+
+        // Perspective project to image space
+        Vector3f p = *intrinsics * currentVertices[idx];
+        int u = (int) (p[0] / p[2]);
+        int v = (int) (p[1] / p[2]);
+
+        //Matrix4f pose = Matrix4f::Identity();
+        if(u >= 0 && u < width && v >= 0 &&  v < height) {
+            // Raycast with model
+            bool success = raycastTSDFPoint(
+                    u,
+                    v,
+                    voxel_grid_TSDF,
+                    voxel_grid_dim_x,
+                    voxel_grid_dim_y,
+                    voxel_grid_dim_z,
+                    voxel_size,
+                    trunc_margin,
+                    pose,
+                    intrinsics,
+                    width,
+                    height,
+                    N,
+                    &prev_vertex,
+                    &prev_normal);
+
+            if (success) {
+                // check distance threshold
+                float distance = (currentVertices[idx] - prev_vertex).norm();
+                // check angle between normals
+                float angle = (currentNormals[idx].dot(prev_normal)) / (currentNormals[idx].norm() * prev_normal.norm());
+                angle = acos(angle);
+
+                if (distance <= distanceThreshold && angle <= angleThreshold) {
+                    // Correct  match, add  this to matches  list
+                    printf("distance: %f, angle: %f\n", distance, angle);
+
+                    previousVertices[idx] = prev_vertex;
+                    previousNormals[idx] = prev_normal;
+
+                    Vector3f s = currentVertices[idx];
+                    Vector3f d = prev_vertex;
+                    Vector3f n = prev_normal;
+
+                    Matrix<float,6,1> at;
+
+                    // Add the point-to-plane constraints to the system
+                    auto t1 = s.cross(n);
+                    at(0) = t1[0];
+                    at(1) = t1[1];
+                    at(2) = t1[2];
+//                at(0) = n[2] * s[1] - n[1] * s[2];
+//                at(1) = n[0] * s[2] - n[2] * s[0];
+//                at(2) = n[1] * s[0] - n[0] * s[1];
+                    at(3) = n[0];
+                    at(4) = n[1];
+                    at(5) = n[2];
+
+                    float b = n[0] * d[0] + n[1] * d[1] + n[2] * d[2] - n[0] * s[0] - n[1] * s[1] - n[2] * s[2];
+
+                    local_ata = at * at.transpose();
+                    local_atb = at * b;
+                }
+            }
+
+        }
+    }
+
+    ///// ##### Tree Reduction (bank conflicts approach)
+    ///// https://github.com/CoffeeBeforeArch/cuda_programming/blob/master/sumReduction/bank_conflicts/sumReduction.cu
+    // Load elements into shared memory
+    partial_sum_ata[threadIdx.x] = local_ata;
+    partial_sum_atb[threadIdx.x] = local_atb;
     __syncthreads();
 
     // Increase the stride of the access until we exceed the CTA dimensions
@@ -643,4 +791,159 @@ private:
     void *d_temp_storage_atb = NULL;
     size_t temp_storage_bytes_atb = 0;
 
+};
+
+
+
+class LinearICPCudaWithModelOptimizer {
+public:
+    LinearICPCudaWithModelOptimizer(size_t width, size_t height, cudaStream_t stream = 0) {
+        this->stream = stream;
+        const size_t N = width * height;
+
+        CUDA_CALL(cudaMalloc((void **) &estimatedPose, sizeof(Matrix4f)));
+        CUDA_CALL(cudaMalloc((void**) &atas, sizeof(Matrix<float,6,6>) * N));
+        CUDA_CALL(cudaMalloc((void**) &atbs, sizeof(Matrix<float,6,1>) * N));
+
+        CUDA_CALL(cudaMalloc((void **) &transformedVertices, N * sizeof(Vector3f)));
+        CUDA_CALL(cudaMalloc((void **) &transformedNormals, N * sizeof(Vector3f)));
+    }
+    ~LinearICPCudaWithModelOptimizer() {
+        CUDA_CALL(cudaFree(estimatedPose));
+        CUDA_CALL(cudaFree(atas));
+        CUDA_CALL(cudaFree(atbs));
+
+        CUDA_CALL(cudaFree(transformedVertices));
+        CUDA_CALL(cudaFree(transformedNormals));
+    }
+
+    Matrix4f estimatePose(Matrix3f& intrinsics, const FrameData& currentFrame,
+                          const FrameData& previousFrame,
+                          const VolumetricGridCuda& volume,
+                          Matrix4f& initialPose) {
+        const size_t N = currentFrame.width * currentFrame.height;
+
+        // The initial estimate can be given as an argument.
+        CUDA_CALL(cudaMemcpy(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice));
+
+        Matrix4f estimatedPose_cpu;
+        CUDA_CALL(cudaMemcpy(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
+
+        int m_nIterations = 20;
+        float distanceThreshold = 0.1f;
+        float angleThreshold = 3.14/12;
+        for (int i = 0; i < m_nIterations; ++i) {
+            // Compute the matches.
+            //std::cout << "Matching points ... Iteration: " << i << std::endl;
+            clock_t begin = clock();
+
+            // Transform points and normals.  IMPORTANT.
+            // 640*480 = 307200
+            transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
+                    currentFrame.g_vertices,
+                    currentFrame.g_normals,
+                    estimatedPose,
+                    currentFrame.width,
+                    currentFrame.height,
+                    N,
+                    transformedVertices,
+                    transformedNormals
+            );
+
+            CUDA_CHECK_ERROR
+
+            // 1200 blocks
+            getCorrespondencesWithModel<<<(N + BLOCKSIZE_REDUCED - 1) / BLOCKSIZE_REDUCED, BLOCKSIZE_REDUCED, 0, 0 >>> (
+                    currentFrame.depthMap,
+                    previousFrame.globalCameraPose,
+                    transformedVertices,
+                    transformedNormals,
+                    previousFrame.g_vertices,
+                    previousFrame.g_normals,
+                    volume.voxel_grid_TSDF_GPU,
+                    volume.voxel_grid_dim_x,
+                    volume.voxel_grid_dim_y,
+                    volume.voxel_grid_dim_z,
+                    volume.voxel_size,
+                    volume.trunc_margin,
+                    &intrinsics,
+                    currentFrame.width,
+                    currentFrame.height,
+                    N,
+                    distanceThreshold,
+                    angleThreshold,
+                    atas,
+                    atbs
+            );
+
+            CUDA_CHECK_ERROR
+
+            sumReduction<<<6, 200, 0, 0 >>> (
+                    atas,
+                    atbs
+            );
+
+            CUDA_CHECK_ERROR
+
+            sumReduction<<<1, 6, 0, 0 >>> (
+                    atas,
+                    atbs
+            );
+
+            CUDA_CHECK_ERROR
+
+            // Wait for GPU to finish before accessing on host
+            cudaDeviceSynchronize();
+
+
+            clock_t end = clock();
+            double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
+            //std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
+
+            Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
+            Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
+
+            CUDA_CALL(cudaMemcpyAsync(ata_cpu.data(),atas[0].data(),sizeof(Matrix<float,6,6>),cudaMemcpyDeviceToHost,stream));
+            CUDA_CALL(cudaMemcpyAsync(atb_cpu.data(),atbs[0].data(),sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
+
+            VectorXf x(6);
+            x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
+
+            //JacobiSVD<MatrixXf> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            //x = svd.solve(atb_cpu);
+            //x = ata_cpu.llt().solve(atb_cpu);
+            //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
+
+            float alpha = x(0), beta = x(1), gamma = x(2);
+
+            // Build the pose matrix
+            Matrix3f rotation = AngleAxisf(alpha, Vector3f::UnitX()).toRotationMatrix() *
+                                AngleAxisf(beta, Vector3f::UnitY()).toRotationMatrix() *
+                                AngleAxisf(gamma, Vector3f::UnitZ()).toRotationMatrix();
+
+            Vector3f translation = x.tail(3);
+
+            // Build the pose matrix using the rotation and translation matrices
+            Matrix4f estimatedPose2 = Matrix4f::Identity();
+            estimatedPose2.block(0, 0, 3, 3) = rotation;
+            estimatedPose2.block(0, 3, 3, 1) = translation;
+
+            estimatedPose_cpu = estimatedPose2 * estimatedPose_cpu;
+            CUDA_CALL(cudaMemcpy(estimatedPose, estimatedPose_cpu.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+
+            // std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
+
+            //std::cout << "Optimization iteration done." << std::endl;
+        }
+
+        return estimatedPose_cpu;
+    }
+
+private:
+    Matrix4f *estimatedPose; // On device memory
+    Matrix<float,6,6> *atas; // On device memory
+    Matrix<float,6,1> *atbs; // On device memory
+    Vector3f *transformedVertices; // On device memory
+    Vector3f *transformedNormals;  // On device memory
+    cudaStream_t stream;
 };
