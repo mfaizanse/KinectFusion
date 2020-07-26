@@ -146,7 +146,7 @@ int reconstructRoom() {
     cv::namedWindow("Kinect_Fusion");
 
 	int i = 0;
-	const int iMax = 3;
+	const int iMax = 4;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -242,20 +242,20 @@ int reconstructRoom() {
         currentFrame = tmpFrame;
 
 		// if (i % 5 == 0) {
-		if (i > 0) {
-		    std::cout << "Saving mesh ..." << std::endl;
-            // We write out the mesh to file for debugging.
-            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
-            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
-
-            std::stringstream ss;
-            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
-            if (!resultingMesh.writeMesh(ss.str())) {
-                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-                return -1;
-            }
-		}
+//		if (i > 0) {
+//		    std::cout << "Saving mesh ..." << std::endl;
+//            // We write out the mesh to file for debugging.
+//            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
+//            SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
+//            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
+//
+//            std::stringstream ss;
+//            ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
+//            if (!resultingMesh.writeMesh(ss.str())) {
+//                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+//                return -1;
+//            }
+//		}
 
 		i++;
 	}
