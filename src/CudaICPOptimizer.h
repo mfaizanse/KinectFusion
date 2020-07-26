@@ -80,12 +80,11 @@ __global__ void getCorrespondences(
         return;
     }
 
-    // bool isCorrespondenceFound = false;
-
     Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
     Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
 
-    if (currentDepthMap[idx] > 0) {
+    //if (currentDepthMap[idx] > 0) {
+    if (previousVertices[idx].x() != -MINF) {
         // printf("a1\n");
         // Transform previous point to camera coordinates from  world coordinates
         Matrix4f poseInv = (*previousGlobalCameraPose).inverse();
