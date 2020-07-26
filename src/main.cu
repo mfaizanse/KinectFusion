@@ -53,7 +53,7 @@ int reconstructRoom() {
     //optimizer->setMatchingMaxDistance(0.0003f);
     optimizer->setMatchingMaxAngle(1.0472f); // 0.523599 // 1.0472f
     optimizer->usePointToPlaneConstraints(true);
-    optimizer->setNbOfIterations(40);
+    optimizer->setNbOfIterations(20);
 
     // Intrinsics on host memory
     Matrix3f depthIntrinsics = sensor.getDepthIntrinsics();
@@ -117,12 +117,12 @@ int reconstructRoom() {
     g_vertices_host = (Vector3f *) malloc(N * sizeof(Vector3f));
 
     cv::Mat renderedDepthImg = cv::Mat::zeros(depthFrameHeight, depthFrameWidth, CV_32FC1);
-    cv::namedWindow("Kinect_Fusion");
-    imshow( "Kinect_Fusion", renderedDepthImg);
-    cv::waitKey( 1 );
+//    cv::namedWindow("Kinect_Fusion");
+//    imshow( "Kinect_Fusion", renderedDepthImg);
+//    cv::waitKey( 1 );
 
 	int i = 0;
-	const int iMax = 10;
+	const int iMax = 5;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -130,6 +130,7 @@ int reconstructRoom() {
 		// Copy depth map to current frame, device memory
         CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
+        /// Apply bilateral filter to depth map
         BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
 
         // #### Step 1: Surface measurement
@@ -138,7 +139,7 @@ int reconstructRoom() {
                                             currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
 
-        ///// Debugging code  start
+        ///// Debugging code start
         //// We write out the mesh to file for debugging.
 //        Vector3f *g_vertices_host;
 //        g_vertices_host = (Vector3f *) malloc(N * sizeof(Vector3f));
@@ -163,7 +164,7 @@ int reconstructRoom() {
             // The returned pose matrix will be on host memory
             currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
 		}
-        std::cout << "currentFrameToPreviousFrame pose: " << std::endl << currentFrameToPreviousFrame << std::endl;
+        //std::cout << "currentFrameToPreviousFrame pose: " << std::endl << currentFrameToPreviousFrame << std::endl;
         currentCameraToWorld = currentFrameToPreviousFrame * currentCameraToWorld;
 
 		//// Step 3:  Volumetric Grid Fusion
@@ -179,40 +180,20 @@ int reconstructRoom() {
                 depthFrameWidth,
                 depthFrameHeight);
 
-		// Step 5: Update trajectory poses and transform  current points
+		// Step 5: Update trajectory poses
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
         Matrix4f currentCameraPose = currentCameraToWorld.inverse();
 		std::cout << "Current camera pose: " << std::endl << currentCameraPose << std::endl;
 		estimatedPoses.push_back(currentCameraPose);
 
-        ////std::cout << "GT camera pose: " << std::endl << sensor.getTrajectory() << std::endl;
-
-		// Update global rotation+translation
-		// Copy from device memory to host memory, then update.
-//        CUDA_CALL(cudaMemcpy(tmp4fMat_cpu, previousFrame.globalCameraPose->data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
-//		*tmp4fMat_cpu = currentCameraPose * *tmp4fMat_cpu;
-        //*tmp4fMat_cpu = (*tmp4fMat_cpu).inverse();
-        //CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, (*tmp4fMat_cpu).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
+		// Update globalCameraPose on device memory
         CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
-
-        // IMPORTANT QUESTIONS: I THINK WE DONT NEED TO DO IT NOW WHEN WE ARE DOING THE RAYCASTING
-        // @TODO: Step 6: Transform all points and normals to new camera pose
-        // IMPORTANT STEP  MISSING
-        ////transformHelper.transformCurrentFrameVertices(currentFrame, currentFrame.globalCameraPose);
 
         // Render the raycast result
         CUDA_CALL(cudaMemcpy(renderedDepthImg.data, currentFrame.renderedImage, N * sizeof(float), cudaMemcpyDeviceToHost));
-//        imshow( "Kinect_Fusion", renderedDepthImg);
-//        cv::waitKey( 0 );
-
-        ///// Debugging code  start
-        //// We write out the mesh to file for debugging.
-
-        //std::cout << "step 6" << std::endl;
         CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
-
         std::cout << "Saving rendered mesh ..." << std::endl;
-        SimpleMesh currentSM{ g_vertices_host, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), 0.1f };
+        SimpleMesh currentSM{ g_vertices_host, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), false,0.1f };
         std::stringstream ss1;
         ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
         if (!currentSM.writeMesh(ss1.str())) {
@@ -220,15 +201,12 @@ int reconstructRoom() {
             return -1;
         }
 
-        ///// Debugging code  end
-
         // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
 		// Update previous frame data
         FrameData tmpFrame = previousFrame;
         previousFrame = currentFrame;
         currentFrame = tmpFrame;
 
-		// if (i % 5 == 0) {
 		if (i > 0) {
 		    std::cout << "Saving mesh ..." << std::endl;
             // We write out the mesh to file for debugging.
