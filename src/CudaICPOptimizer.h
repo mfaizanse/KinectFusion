@@ -463,6 +463,13 @@ __global__ void computeAtbs(const float *currentDepthMap,
                 Vector3f n = previousNormals[idx];
 
                 // Add the point-to-plane constraints to the system
+//                Matrix3f skews;
+//                skews << 0 , - s[2], s[1],
+//                        s[2], 0, -s[0],
+//                        -s[1], s[0] , 0;
+//                MatrixXf g(3,6);
+//                g << skews , Matrix3f::Identity();
+//                at = g.transpose() * n;
                 at(1) = n[0] * s[2] - n[2] * s[0];
                 at(0) = n[2] * s[1] - n[1] * s[2];
                 at(2) = n[1] * s[0] - n[0] * s[1];
@@ -534,7 +541,6 @@ public:
         CUDA_CALL(cudaMemcpyAsync(estimatedPose, initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToDevice, stream));
 
         CUDA_CALL(cudaMemcpyAsync(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost, stream));
-
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.

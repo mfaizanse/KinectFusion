@@ -44,6 +44,7 @@ set(CMAKE_CXX_STANDARD 14)
 #find_package(Ceres REQUIRED)
 #find_package(glog REQUIRED ${glog_DIR_HINT})
 #find_package(Eigen3 3.3 REQUIRED)
+find_package(OpenCV REQUIRED)
 
 find_package(CUDA  REQUIRED)
 include_directories("${CUDA_INCLUDE_DIRS}")
@@ -56,6 +57,7 @@ endif()
 
 message(STATUS "path to eigen3 include directory = ${Eigen3_INCLUDE_DIR}")
 message(STATUS "Path to CUB include directory = ${CUB_INCLUDE_DIR}")
+message(STATUS "Path to OpenCV libs = ${OpenCV_LIBS}")
 
 # Set files to be compiled
 set(HEADER_FILES 

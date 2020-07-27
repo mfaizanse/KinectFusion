@@ -7,21 +7,18 @@
 #include "SurfacePredictionCuda.h"
 #include "CudaICPOptimizer.h"
 #include "BilateralFilter.h"
-#include "MipMap.h"
 #include "VolumetricGridCuda.h"
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
+
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+
+#include "VolumetricGridCuda.h"
+
 
 #define USE_GPU_ICP	1
-#define USE_REDUCTION_ICP 0
+#define USE_REDUCTION_ICP 1
+#define SHOW_MESH 0
 
-
-struct VertexMipMap {
-    Vector3f *vertices;
-    Vector3f *normals;
-    size_t width;
-    size_t height;
-};
 
 int reconstructRoom() {
     // Setup virtual sensor
@@ -73,7 +70,7 @@ int reconstructRoom() {
 
     TransformHelper transformHelper;
 
-    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0.5, 0.5,  0);
+    SurfaceMeasurement surfaceMeasurement(depthIntrinsics.inverse(), 0);
     VolumetricGridCuda volumetricGrid(cudaDepthIntrinsics,  &base_pose_cpu);
     SurfacePredictionCuda surfacePrediction(cudaDepthIntrinsics, 0);
 
@@ -113,13 +110,18 @@ int reconstructRoom() {
     Matrix4f *tmp4fMat_cpu;
     tmp4fMat_cpu = (Matrix4f*) malloc(sizeof(Matrix4f));
 
+
+    cudaEvent_t start, stop;
+    float elapsedTime;
+
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
     Vector3f *g_vertices_host;
     g_vertices_host = (Vector3f *) malloc(N * sizeof(Vector3f));
-
+  
     cv::Mat renderedDepthImg = cv::Mat::zeros(depthFrameHeight, depthFrameWidth, CV_32FC1);
-//    cv::namedWindow("Kinect_Fusion");
-//    imshow( "Kinect_Fusion", renderedDepthImg);
-//    cv::waitKey( 1 );
+
 
 	int i = 0;
 	const int iMax = 5;
@@ -130,14 +132,27 @@ int reconstructRoom() {
 		// Copy depth map to current frame, device memory
         CUDA_CALL(cudaMemcpy(unfilteredDepth, depthMap, N * sizeof(float), cudaMemcpyHostToDevice));
 
-        /// Apply bilateral filter to depth map
-        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,0.5,0.5,depthFrameHeight,N);
+        cudaEventRecord(start);
+        BilateralFilter::filterDepthmap(unfilteredDepth,currentFrame.depthMap,depthFrameWidth,100,3,depthFrameHeight,N);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        cudaEventElapsedTime(&elapsedTime, start,stop);
+        printf("Filter depthmap elapsed time : %f ms\n" ,elapsedTime);
+
 
         // #### Step 1: Surface measurement
         // It expects the pointers for device memory
+
+        cudaEventRecord(start);
         surfaceMeasurement.measureSurface(depthFrameWidth, depthFrameHeight,
                                             currentFrame.g_vertices, currentFrame.g_normals, currentFrame.depthMap,
                                           0);
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        cudaEventElapsedTime(&elapsedTime, start,stop);
+        printf("Surface measurement elapsed time : %f ms\n" ,elapsedTime);
 
         ///// Debugging code start
         //// We write out the mesh to file for debugging.
@@ -160,16 +175,38 @@ int reconstructRoom() {
 		Matrix4f currentFrameToPreviousFrame = Matrix4f::Identity();
 		// Don't do ICP on 1st  frame
 		if (i > 0) {
-            // The arguments should be on device memory
-            // The returned pose matrix will be on host memory
-            currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *cuda4fIdentity);
+            if (USE_GPU_ICP)  {
+                // The arguments should be on device memory
+                // The returned pose matrix will be on host memory
+                cudaEventRecord(start);
+                currentFrameToPreviousFrame = optimizer->estimatePose(*cudaDepthIntrinsics, currentFrame, previousFrame, *previousFrame.globalCameraPose);
+
+                cudaEventRecord(stop);
+                cudaEventSynchronize(stop);
+
+                cudaEventElapsedTime(&elapsedTime, start,stop);
+                printf("ICP elapsed time : %f ms\n" ,elapsedTime);
+            }
+            else {
+                // currentCameraToWorld = optimizer->estimatePose(depthIntrinsics, currentFrame, previousFrame, Matrix4f::Identity());
+            }
 		}
         //std::cout << "currentFrameToPreviousFrame pose: " << std::endl << currentFrameToPreviousFrame << std::endl;
         currentCameraToWorld = currentFrameToPreviousFrame * currentCameraToWorld;
 
 		//// Step 3:  Volumetric Grid Fusion
-		// currentCameraToWorld is on CPU
+
+		// @TODO: copy  currentCameraToWorld  to gpu
+		cudaEventRecord(start);
+
 		volumetricGrid.integrateFrame(&currentCameraToWorld,  currentFrame);
+
+        cudaEventRecord(stop);
+        cudaEventSynchronize(stop);
+
+        cudaEventElapsedTime(&elapsedTime, start,stop);
+        printf("Volumetric fusion elapsed time : %f ms\n" ,elapsedTime);
+
 
         // Step 4: Ray-Casting
         surfacePrediction.predict(volumetricGrid,
@@ -179,6 +216,7 @@ int reconstructRoom() {
 		        currentCameraToWorld,
                 depthFrameWidth,
                 depthFrameHeight);
+
 
 		// Step 5: Update trajectory poses
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
@@ -207,12 +245,39 @@ int reconstructRoom() {
         previousFrame = currentFrame;
         currentFrame = tmpFrame;
 
+        if(SHOW_MESH) {
+            cv::Mat img = cv::Mat::zeros(480, 640, CV_32F);
+
+            std::vector<Vector3f> normals = std::vector<Vector3f>(640 * 480);
+
+            CUDA_CALL(cudaMemcpyAsync(normals.data(), previousFrame.g_normals, sizeof(Vector3f) * 640 * 480,
+                                      cudaMemcpyDeviceToHost));
+            CUDA_CALL(cudaDeviceSynchronize());
+
+            std::cout << "Generating img" << std::endl;
+            for (int normal_idx = 0; normal_idx < normals.size(); normal_idx++) {
+                img.at<float>(normal_idx) = normals[normal_idx].dot((Vector3f(1, 1, 1).normalized()));
+            }
+            std::cout << "Done." << std::endl;
+
+            cv::namedWindow("Current mesh");
+            cv::imshow("Current mesh", img);
+            cv::waitKey(0);
+            cv::destroyAllWindows();
+        }
+
+		// if (i % 5 == 0) {
+
 		if (i > 0) {
 		    std::cout << "Saving mesh ..." << std::endl;
             // We write out the mesh to file for debugging.
-            SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
+            std::vector<Vector3f> cpu_vertices = std::vector<Vector3f>(640 * 480);
+            CUDA_CALL(cudaMemcpyAsync(cpu_vertices.data(),previousFrame.g_vertices,sizeof(Vector3f) * 640 * 480,cudaMemcpyDeviceToHost));
+            CUDA_CALL(cudaDeviceSynchronize());
+            SimpleMesh filteredDepthMesh{cpu_vertices.data(),640,480,sensor.getColorRGBX(), 0.1f};
+            //SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
             SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
-            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(currentDepthMesh, currentCameraMesh, Matrix4f::Identity());
+            SimpleMesh resultingMesh = SimpleMesh::joinMeshes(filteredDepthMesh, currentCameraMesh, Matrix4f::Identity());
 
             std::stringstream ss;
             ss << filenameBaseOut << sensor.getCurrentFrameCnt() << ".off";
