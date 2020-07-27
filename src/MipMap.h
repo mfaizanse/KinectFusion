@@ -18,6 +18,12 @@ __global__ void createMipMap(float *depthMapLarge, float *depthMapSmall, size_t 
     depthMapSmall[idx] = (depthMapLarge[idxl] + depthMapLarge[idxl + 1] + depthMapLarge[idxl + (width * 2)] + depthMapLarge[idxl + (width * 2) + 1]) / 4.0f;
 }
 
+struct DepthMipMap {
+    float *depthMap;
+    size_t width;
+    size_t height;
+};
+
 class MipMapGen {
 public:
     static void createDepthMipMap(float *depthMap, std::vector<DepthMipMap> mipmaps, size_t width, size_t height, cudaStream_t stream = 0) {

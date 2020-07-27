@@ -121,7 +121,7 @@ public:
     /**
      * Constructs a mesh from the current color and 3d points.
      */
-    SimpleMesh(Vector3f *g_vertices, size_t width, size_t height, BYTE* colorMap, float edgeThreshold = 0.01f) {
+    SimpleMesh(Vector3f *g_vertices, size_t width, size_t height, BYTE* colorMap, bool useColor = true, float edgeThreshold = 0.01f) {
         // Compute vertices from g_vertices
         m_vertices.resize(width * height);
         // For every pixel row.
@@ -137,8 +137,14 @@ public:
                 else {
                     m_vertices[idx].position = Vector4f(g_vertices[idx].x(), g_vertices[idx].y(), g_vertices[idx].z(), 1.0f);
 
-                    // Write fixed color to all  vertices.
-                    m_vertices[idx].color = Vector4uc(colorMap[4 * idx + 0], colorMap[4 * idx + 1], colorMap[4 * idx + 2], colorMap[4 * idx + 3]);
+                    if (useColor) {
+                        m_vertices[idx].color = Vector4uc(colorMap[4 * idx + 0], colorMap[4 * idx + 1], colorMap[4 * idx + 2], colorMap[4 * idx + 3]);
+                    }
+                    else {
+                        // 235, 229, 52
+                        m_vertices[idx].color = Vector4uc(235, 229, 52, 255);
+                    }
+
                 }
             }
         }

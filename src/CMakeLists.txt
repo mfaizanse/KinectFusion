@@ -26,6 +26,9 @@ set(FreeImage_INCLUDE_DIR /usr/local/Cellar/freeimage/3.18.0/include CACHE PATH 
 set(FreeImage_LIBRARY_DIR /usr/local/Cellar/freeimage/3.18.0/lib CACHE PATH "Path to FreeImage .lib/.dll folder")
 #set(Lz4_LIBRARY_DIR /usr/local/Cellar/lz4/1.9.2/lib CACHE PATH "Path to lz4 .lib/.dll folder")
 
+find_package(OpenCV REQUIRED) # Transfer images (no need to be 3.3.1)
+set (EXTRA_LIBS ${EXTRA_LIBS} ${OpenCV_LIBS})
+
 #set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH} ${Ceres_DIR})
 set(CMAKE_PREFIX_PATH ${CMAKE_PREFIX_PATH})
 
@@ -67,6 +70,7 @@ set(HEADER_FILES
     CudaError.h
     Macros.h
     SurfaceMeasurement.h
+    SurfacePredictionCuda.h
     ICPOptimizer.h
     CudaICPOptimizer.h BilateralFilter.h MipMap.h VolumetricGridCuda.h)
 

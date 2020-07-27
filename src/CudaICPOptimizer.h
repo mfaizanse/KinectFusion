@@ -60,9 +60,9 @@ __global__ void getCorrespondences(
         const Vector3f *previousVertices,
         const Vector3f *previousNormals,
         const Matrix3f *intrinsics,
-        const size_t width,
-        const size_t height,
-        const size_t N,
+        const int width,
+        const int height,
+        const int N,
         const float distanceThreshold,
         const float angleThreshold,
         Matrix<float, 6, 6> *AtAs,
@@ -80,12 +80,13 @@ __global__ void getCorrespondences(
         return;
     }
 
-    bool isCorrespondenceFound = false;
+    printf("ICP W: %d, H: %d, N: %d\n", width, height, N);
 
     Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
     Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
 
-    if (currentDepthMap[idx] > 0) {
+    //if (currentDepthMap[idx] > 0) {
+    if (previousVertices[idx].x() != -MINF) {
         // printf("a1\n");
         // Transform previous point to camera coordinates from  world coordinates
         Matrix4f poseInv = (*previousGlobalCameraPose).inverse();
@@ -120,8 +121,8 @@ __global__ void getCorrespondences(
             angle = acos(angle);
 
             if (distance <= distanceThreshold && angle <= angleThreshold) {
-                // @TODO: Correct  match, add  this to matches  list
-                isCorrespondenceFound = true;
+                // Correct  match, add  this to matches  list
+                //isCorrespondenceFound = true;
 
                 Vector3f s = currentVertices[id2];
                 Vector3f d = previousVertices[idx];
@@ -130,9 +131,13 @@ __global__ void getCorrespondences(
                 Matrix<float,6,1> at;
 
                 // Add the point-to-plane constraints to the system
-                at(0) = n[2] * s[1] - n[1] * s[2];
-                at(1) = n[0] * s[2] - n[2] * s[0];
-                at(2) = n[1] * s[0] - n[0] * s[1];
+                auto t1 = s.cross(n);
+                at(0) = t1[0];
+                at(1) = t1[1];
+                at(2) = t1[2];
+//                at(0) = n[2] * s[1] - n[1] * s[2];
+//                at(1) = n[0] * s[2] - n[2] * s[0];
+//                at(2) = n[1] * s[0] - n[0] * s[1];
                 at(3) = n[0];
                 at(4) = n[1];
                 at(5) = n[2];
@@ -280,27 +285,29 @@ public:
         Matrix4f estimatedPose_cpu;
         CUDA_CALL(cudaMemcpy(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
 
+        clock_t begin = clock();
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
-            std::cout << "Matching points ... Iteration: " << i << std::endl;
-            clock_t begin = clock();
+            //std::cout << "Matching points ... Iteration: " << i << std::endl;
 
             // Transform points and normals.  IMPORTANT.
             // 640*480 = 307200
+            printf("*******ITERATION W: %d, H: %d, N: %d\n", currentFrame.width, currentFrame.height, N);
             transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
                     estimatedPose,
-                    currentFrame.width,
-                    currentFrame.height,
-                    N,
+                    (int)currentFrame.width,
+                    (int)currentFrame.height,
+                    (int)N,
                     transformedVertices,
                     transformedNormals
             );
 
             CUDA_CHECK_ERROR
 
+            printf("*******ITERATION ICP W: %d, H: %d, N: %d\n", currentFrame.width, currentFrame.height, N);
             // 1200 blocks
             getCorrespondences<<<(N + BLOCKSIZE_REDUCED - 1) / BLOCKSIZE_REDUCED, BLOCKSIZE_REDUCED, 0, 0 >>> (
                     currentFrame.depthMap,
@@ -338,11 +345,6 @@ public:
             // Wait for GPU to finish before accessing on host
             cudaDeviceSynchronize();
 
-
-            clock_t end = clock();
-            double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-            std::cout << "Matching Completed in " << elapsedSecs << " seconds." << std::endl;
-
             Matrix<float,6,6> ata_cpu = Matrix<float,6,6>::Zero();
             Matrix<float,6,1> atb_cpu = Matrix<float,6,1>::Zero();
 
@@ -350,10 +352,10 @@ public:
             CUDA_CALL(cudaMemcpyAsync(atb_cpu.data(),atbs[0].data(),sizeof(Matrix<float,6,1>),cudaMemcpyDeviceToHost,stream));
 
             VectorXf x(6);
-            x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
+            //x = ata_cpu.triangularView<Upper>().solve(atb_cpu);
 
-            //JacobiSVD<MatrixXd> svd(ata_cpu, ComputeThinU | ComputeThinV);
-            //x = svd.solve(atb_cpu);
+            JacobiSVD<MatrixXf> svd(ata_cpu, ComputeThinU | ComputeThinV);
+            x = svd.solve(atb_cpu);
             //x = ata_cpu.llt().solve(atb_cpu);
             //x = ata_cpu.llt().matrixLLT().triangularView<StrictlyUpper>().solve(atb_cpu);
 
@@ -376,8 +378,12 @@ public:
 
             // std::cout << "estimatedPose- " << std::endl << estimatedPose << std::endl;
 
-            std::cout << "Optimization iteration done." << std::endl;
+            //std::cout << "Optimization iteration done." << std::endl;
         }
+
+        clock_t end = clock();
+        double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
+        std::cout << "ICP " << m_nIterations << " iterations completed in " << elapsedSecs << " seconds." << std::endl;
 
         return estimatedPose_cpu;
     }
@@ -645,5 +651,4 @@ private:
     size_t temp_storage_bytes_ata = 0;
     void *d_temp_storage_atb = NULL;
     size_t temp_storage_bytes_atb = 0;
-
 };
