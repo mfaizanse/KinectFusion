@@ -17,10 +17,13 @@
 
 #define USE_GPU_ICP	1
 #define USE_REDUCTION_ICP 1
-#define SHOW_MESH 0
+#define SHOW_MESH 1
+#define SAVE_MESH 0
+#define SAVE_RAY_MESH 0
+#define ENABLE_RAYCASTING 0
 
 
-int reconstructRoom() {
+int reconstructRoom(int iMax) {
     // Setup virtual sensor
     std::string filenameIn = std::string("../../data/rgbd_dataset_freiburg1_xyz/");
     std::string filenameBaseOut = std::string("../../outputs/mesh_");
@@ -89,13 +92,11 @@ int reconstructRoom() {
     CUDA_CALL(cudaMalloc((void **) &unfilteredDepth, N * sizeof(float)));
 
     CUDA_CALL(cudaMalloc((void **) &previousFrame.depthMap, N * sizeof(float)));
-    CUDA_CALL(cudaMalloc((void **) &previousFrame.renderedImage, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_vertices, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.g_normals, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &previousFrame.globalCameraPose, sizeof(Matrix4f)));
 
     CUDA_CALL(cudaMalloc((void **) &currentFrame.depthMap, N * sizeof(float)));
-    CUDA_CALL(cudaMalloc((void **) &currentFrame.renderedImage, N * sizeof(float)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.g_vertices, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.g_normals, N * sizeof(Vector3f)));
     CUDA_CALL(cudaMalloc((void **) &currentFrame.globalCameraPose, sizeof(Matrix4f)));
@@ -119,12 +120,12 @@ int reconstructRoom() {
 
     Vector3f *g_vertices_host;
     g_vertices_host = (Vector3f *) malloc(N * sizeof(Vector3f));
-  
-    cv::Mat renderedDepthImg = cv::Mat::zeros(depthFrameHeight, depthFrameWidth, CV_32FC1);
+
+    Vector3f *g_vertices_host_raycast;
+    g_vertices_host_raycast = (Vector3f *) malloc(N * sizeof(Vector3f));
 
 
 	int i = 0;
-	const int iMax = 5;
 	while (sensor.processNextFrame() && i < iMax) {
 	    // Get current depth frame
 		float* depthMap = sensor.getDepth();
@@ -153,6 +154,8 @@ int reconstructRoom() {
 
         cudaEventElapsedTime(&elapsedTime, start,stop);
         printf("Surface measurement elapsed time : %f ms\n" ,elapsedTime);
+
+        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
 
         ///// Debugging code start
         //// We write out the mesh to file for debugging.
@@ -208,15 +211,23 @@ int reconstructRoom() {
         printf("Volumetric fusion elapsed time : %f ms\n" ,elapsedTime);
 
 
-        // Step 4: Ray-Casting
-        surfacePrediction.predict(volumetricGrid,
-		        currentFrame.g_vertices,
-		        currentFrame.g_normals,
-		        currentFrame.renderedImage,
-		        currentCameraToWorld,
-                depthFrameWidth,
-                depthFrameHeight);
 
+
+        // Step 4: Ray-Casting
+        if(ENABLE_RAYCASTING) {
+            cudaEventRecord(start);
+            surfacePrediction.predict(volumetricGrid,
+                                      currentFrame.g_vertices,
+                                      currentFrame.g_normals,
+                                      currentCameraToWorld,
+                                      depthFrameWidth,
+                                      depthFrameHeight);
+            cudaEventRecord(stop);
+            cudaEventSynchronize(stop);
+
+            cudaEventElapsedTime(&elapsedTime, start, stop);
+            printf("Raycasting elapsed time : %f ms\n", elapsedTime);
+        }
 
 		// Step 5: Update trajectory poses
 		// Invert the transformation matrix to get the current camera pose.  [Host memory]
@@ -228,15 +239,17 @@ int reconstructRoom() {
         CUDA_CALL(cudaMemcpy(currentFrame.globalCameraPose, currentCameraPose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
         // Render the raycast result
-        CUDA_CALL(cudaMemcpy(renderedDepthImg.data, currentFrame.renderedImage, N * sizeof(float), cudaMemcpyDeviceToHost));
-        CUDA_CALL(cudaMemcpy(g_vertices_host, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
-        std::cout << "Saving rendered mesh ..." << std::endl;
-        SimpleMesh currentSM{ g_vertices_host, depthFrameWidth,depthFrameHeight, sensor.getColorRGBX(), false,0.1f };
-        std::stringstream ss1;
-        ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
-        if (!currentSM.writeMesh(ss1.str())) {
-            std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
-            return -1;
+
+        if(SAVE_RAY_MESH) {
+            CUDA_CALL(cudaMemcpy(g_vertices_host_raycast, currentFrame.g_vertices, N * sizeof(Vector3f), cudaMemcpyDeviceToHost));
+            std::cout << "Saving rendered mesh ..." << std::endl;
+            SimpleMesh currentSM{g_vertices_host_raycast, depthFrameWidth, depthFrameHeight, sensor.getColorRGBX(), false, 0.1f};
+            std::stringstream ss1;
+            ss1 << filenameBaseOut << "SM_" << sensor.getCurrentFrameCnt() << ".off";
+            if (!currentSM.writeMesh(ss1.str())) {
+                std::cout << "Failed to write mesh!\nCheck file path!" << std::endl;
+                return -1;
+            }
         }
 
         // Step 7: Update data (e.g. Poses, depth frame etc.) for next frame
@@ -254,11 +267,9 @@ int reconstructRoom() {
                                       cudaMemcpyDeviceToHost));
             CUDA_CALL(cudaDeviceSynchronize());
 
-            std::cout << "Generating img" << std::endl;
             for (int normal_idx = 0; normal_idx < normals.size(); normal_idx++) {
                 img.at<float>(normal_idx) = normals[normal_idx].dot((Vector3f(1, 1, 1).normalized()));
             }
-            std::cout << "Done." << std::endl;
 
             cv::namedWindow("Current mesh");
             cv::imshow("Current mesh", img);
@@ -268,13 +279,11 @@ int reconstructRoom() {
 
 		// if (i % 5 == 0) {
 
-		if (i > 0) {
+		if (i > 0 && SAVE_MESH) {
 		    std::cout << "Saving mesh ..." << std::endl;
             // We write out the mesh to file for debugging.
-            std::vector<Vector3f> cpu_vertices = std::vector<Vector3f>(640 * 480);
-            CUDA_CALL(cudaMemcpyAsync(cpu_vertices.data(),previousFrame.g_vertices,sizeof(Vector3f) * 640 * 480,cudaMemcpyDeviceToHost));
-            CUDA_CALL(cudaDeviceSynchronize());
-            SimpleMesh filteredDepthMesh{cpu_vertices.data(),640,480,sensor.getColorRGBX(), 0.1f};
+
+            SimpleMesh filteredDepthMesh{g_vertices_host,640,480,sensor.getColorRGBX(),true, 0.1f};
             //SimpleMesh currentDepthMesh{ sensor, currentCameraPose, 0.1f };
             SimpleMesh currentCameraMesh = SimpleMesh::camera(currentCameraPose, 0.0015f);
             SimpleMesh resultingMesh = SimpleMesh::joinMeshes(filteredDepthMesh, currentCameraMesh, Matrix4f::Identity());
@@ -319,7 +328,11 @@ int reconstructRoom() {
 	return 0;
 }
 
-int main() {
-    int result = reconstructRoom();
-	return result;
+int main(int argc,char** argv) {
+    if(argc == 2) {
+        int iMax = atoi(argv[1]);
+        return reconstructRoom(iMax);
+    } else {
+        return reconstructRoom(4);
+    }
 }

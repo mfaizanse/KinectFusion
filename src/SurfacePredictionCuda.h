@@ -78,8 +78,7 @@ void raycastTSDF(const float* voxel_grid_TSDF,
                  const size_t height,
                  const size_t N,
                  Vector3f* g_vertex,
-                 Vector3f* g_normal,
-                 float* renderedImage
+                 Vector3f* g_normal
                  ) {
 
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -92,7 +91,6 @@ void raycastTSDF(const float* voxel_grid_TSDF,
     // Initialize the point and its normal
     g_vertex[idx] = Vector3f(-MINF,-MINF,-MINF);
     g_normal[idx] = Vector3f(-MINF,-MINF,-MINF);
-    renderedImage[idx] = 0;
 
 
     // Get (x,y) of pixel
@@ -280,9 +278,6 @@ void raycastTSDF(const float* voxel_grid_TSDF,
             g_vertex[idx] = Vector3f(vertex.x(), vertex.y(), vertex.z());
             g_normal[idx] = Vector3f(normal.x(), normal.y(), normal.z());
 
-            //renderedImage[idx] = ray_dir.transpose() * g_normal[idx];
-            //renderedImage[idx] = g_normal[idx].dot((Vector3f(1,1,1).normalized()));
-            renderedImage[idx] = 150;
 
             break;
         }
@@ -307,7 +302,6 @@ public:
     void predict(const VolumetricGridCuda& volume,
                Vector3f* g_vertices,
                Vector3f* g_normals,
-               float* renderedImage,
                const Matrix4f& pose,
                size_t width,
                size_t height
@@ -317,7 +311,6 @@ public:
         CUDA_CALL(cudaMemcpy(pose_gpu, pose.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
         //std::cout << "Surface Prediction ... " << std::endl;
-        clock_t begin = clock();
 
         const size_t N = width * height;
 
@@ -338,7 +331,6 @@ public:
 //                        N,
 //                        g_vertices,
 //                        g_normals,
-//                        renderedImage,
 //                        i*width+j
 //                );
 //
@@ -363,8 +355,7 @@ public:
                 height,
                 N,
                 g_vertices,
-                g_normals,
-                renderedImage
+                g_normals
                 );
 
         CUDA_CHECK_ERROR
@@ -372,9 +363,6 @@ public:
         // Wait for GPU to finish before accessing on host
         cudaDeviceSynchronize();
 
-        clock_t end = clock();
-        double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "Surface Prediction Completed in " << elapsedSecs << " seconds." << std::endl;
     }
 
 private:

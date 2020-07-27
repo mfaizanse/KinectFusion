@@ -29,9 +29,9 @@ computeDk(float *depthMap, long u, long v, float sigma_s, float sigma_r, size_t 
 
     size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     //Use a 3x3 grid as the smoothing kernel
-    for (size_t i = 0; i < 49; i++) {
-        long u2 = u + (i/7) - 3;
-        long v2 = v + (i%7) - 3;
+    for (size_t i = 0; i < 9; i++) {
+        long u2 = u + (i/3) - 1;
+        long v2 = v + (i%3) - 1;
         //Skip depth measurements over the edges of the image
         if(u2 < 0 || v2 < 0 || u2 == width || v2 == (N/width)){
             continue;

@@ -80,8 +80,6 @@ __global__ void getCorrespondences(
         return;
     }
 
-    printf("ICP W: %d, H: %d, N: %d\n", width, height, N);
-
     Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
     Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
 
@@ -103,7 +101,7 @@ __global__ void getCorrespondences(
         size_t id2 = u * width + v;
 
         // check if this point lies in frame and also have a normal
-        if(u >= 0 && u < width && v >= 0 &&  v < height && previousNormals[idx].x() != -MINF && currentVertices[id2].x() != -MINF) {
+        if(id2 < N && u >= 0 && u < width && v >= 0 &&  v < height && previousNormals[idx].x() != -MINF && currentVertices[id2].x() != -MINF) {
             // printf("a2\n");
             // Get this point p in current frame transform it into world coordinates
 
@@ -285,15 +283,12 @@ public:
         Matrix4f estimatedPose_cpu;
         CUDA_CALL(cudaMemcpy(estimatedPose_cpu.data(), initialPose.data(), sizeof(Matrix4f), cudaMemcpyDeviceToHost));
 
-        clock_t begin = clock();
-
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
             //std::cout << "Matching points ... Iteration: " << i << std::endl;
 
             // Transform points and normals.  IMPORTANT.
             // 640*480 = 307200
-            printf("*******ITERATION W: %d, H: %d, N: %d\n", currentFrame.width, currentFrame.height, N);
             transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
@@ -307,7 +302,6 @@ public:
 
             CUDA_CHECK_ERROR
 
-            printf("*******ITERATION ICP W: %d, H: %d, N: %d\n", currentFrame.width, currentFrame.height, N);
             // 1200 blocks
             getCorrespondences<<<(N + BLOCKSIZE_REDUCED - 1) / BLOCKSIZE_REDUCED, BLOCKSIZE_REDUCED, 0, 0 >>> (
                     currentFrame.depthMap,
@@ -381,10 +375,6 @@ public:
             //std::cout << "Optimization iteration done." << std::endl;
         }
 
-        clock_t end = clock();
-        double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
-        std::cout << "ICP " << m_nIterations << " iterations completed in " << elapsedSecs << " seconds." << std::endl;
-
         return estimatedPose_cpu;
     }
 
@@ -435,7 +425,7 @@ __global__ void computeAtbs(const float *currentDepthMap,
         size_t id2 = u * width + v;
 
         // check if this point lies in frame and also have a normal
-        if(u >= 0 && u < width && v >= 0 &&  v < height && previousNormals[idx].x() != -MINF && currentVertices[id2].x() != -MINF) {
+        if(id2 < N && u >= 0 && u < width && v >= 0 &&  v < height && previousNormals[idx].x() != -MINF && currentVertices[id2].x() != -MINF) {
             // printf("a2\n");
             // Get this point p in current frame transform it into world coordinates
 
@@ -544,7 +534,7 @@ public:
 
         for (int i = 0; i < m_nIterations; ++i) {
             // Compute the matches.
-            std::cout << "Matching points ... Iteration: " << i << std::endl;
+            //std::cout << "Matching points ... Iteration: " << i << std::endl;
 
             transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, stream >>>(
                     currentFrame.g_vertices,
@@ -620,7 +610,7 @@ public:
             estimatedPose_cpu = estimatedPose2 * estimatedPose_cpu;
             CUDA_CALL(cudaMemcpy(estimatedPose, estimatedPose_cpu.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
-            std::cout << "Optimization iteration done." << std::endl;
+            //std::cout << "Optimization iteration done." << std::endl;
         }
 
         return estimatedPose_cpu;

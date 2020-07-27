@@ -122,6 +122,7 @@ public:
     Matrix3f* intrinsics;
     Matrix4f* base_pose;
     Matrix4f* base_pose_inv;
+    Matrix4f* current_pose_gpu;
 
     VolumetricGridCuda(Matrix3f* intrinsics_gpu, Matrix4f* base_pose_CPU) {
         //global volume
@@ -169,6 +170,8 @@ public:
         CUDA_CALL(cudaMemcpy(base_pose, (*base_pose_CPU).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
         CUDA_CALL(cudaMemcpy(base_pose_inv, base_pose_inv_tmp.data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
+        CUDA_CALL(cudaMalloc((void **) &current_pose_gpu, sizeof(Matrix4f)));
+
 
 
     }
@@ -177,6 +180,7 @@ public:
         CUDA_CALL(cudaFree(voxel_grid_weight_GPU));
         CUDA_CALL(cudaFree(base_pose));
         CUDA_CALL(cudaFree(base_pose_inv));
+        CUDA_CALL(cudaFree(current_pose_gpu));
 
         free(voxel_grid_TSDF);
         free(voxel_grid_weight);
@@ -186,8 +190,7 @@ public:
         // std::cout << "Fusing into Volumetric Grid... " << std::endl;
         clock_t begin = clock();
 
-        Matrix4f* current_pose_gpu;
-        CUDA_CALL(cudaMalloc((void **) &current_pose_gpu, sizeof(Matrix4f)));
+
 
         CUDA_CALL(cudaMemcpy(current_pose_gpu, (*current_pose).data(), sizeof(Matrix4f), cudaMemcpyHostToDevice));
 
@@ -211,7 +214,7 @@ public:
         // Wait for GPU to finish before accessing on host
         cudaDeviceSynchronize();
 
-        CUDA_CALL(cudaFree(current_pose_gpu));
+
 
         clock_t end = clock();
         double elapsedSecs = double(end - begin) / CLOCKS_PER_SEC;
