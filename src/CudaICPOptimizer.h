@@ -60,9 +60,9 @@ __global__ void getCorrespondences(
         const Vector3f *previousVertices,
         const Vector3f *previousNormals,
         const Matrix3f *intrinsics,
-        const size_t width,
-        const size_t height,
-        const size_t N,
+        const int width,
+        const int height,
+        const int N,
         const float distanceThreshold,
         const float angleThreshold,
         Matrix<float, 6, 6> *AtAs,
@@ -79,6 +79,8 @@ __global__ void getCorrespondences(
         printf("WARNING!!!!!!!!!!!!!!!!!: UN-NESSARY THREAD IN ICP, TREE REDUCTION MAY GET STUCK...!!");
         return;
     }
+
+    printf("ICP W: %d, H: %d, N: %d\n", width, height, N);
 
     Matrix<float, 6, 6> local_ata = Matrix<float, 6, 6>::Zero();
     Matrix<float, 6, 1> local_atb = Matrix<float, 6, 1>::Zero();
@@ -291,19 +293,21 @@ public:
 
             // Transform points and normals.  IMPORTANT.
             // 640*480 = 307200
+            printf("*******ITERATION W: %d, H: %d, N: %d\n", currentFrame.width, currentFrame.height, N);
             transformVerticesAndNormals<<<(N + BLOCKSIZE - 1) / BLOCKSIZE, BLOCKSIZE, 0, 0 >>> (
                     currentFrame.g_vertices,
                     currentFrame.g_normals,
                     estimatedPose,
-                    currentFrame.width,
-                    currentFrame.height,
-                    N,
+                    (int)currentFrame.width,
+                    (int)currentFrame.height,
+                    (int)N,
                     transformedVertices,
                     transformedNormals
             );
 
             CUDA_CHECK_ERROR
 
+            printf("*******ITERATION ICP W: %d, H: %d, N: %d\n", currentFrame.width, currentFrame.height, N);
             // 1200 blocks
             getCorrespondences<<<(N + BLOCKSIZE_REDUCED - 1) / BLOCKSIZE_REDUCED, BLOCKSIZE_REDUCED, 0, 0 >>> (
                     currentFrame.depthMap,
